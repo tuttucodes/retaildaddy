@@ -6,9 +6,11 @@ import { loadDemoScript, loadProductKnowledge, findStepForQuestion } from "./dem
 import { createAudioFilePath, playAudio, playAudioInBrowser } from "./audioPlayer.js";
 import { watchAudioInbox } from "./audioInbox.js";
 import { startAudioCapture } from "./audioCapture.js";
+import { startLiveAudioStream } from "./liveAudioStream.js";
 import { ProductDemoController } from "./productDemoController.js";
 import { GoogleMeetAgent } from "./googleMeetAgent.js";
 import { requireSarvamKey } from "./config.js";
+import { BargeInController } from "./speech/bargeInController.js";
 
 const DUPLICATE_TRANSCRIPT_WINDOW_MS = 20_000;
 const AGENT_ECHO_WINDOW_MS = 90_000;
@@ -102,6 +104,7 @@ export class DemoOrchestrator {
     this.questionQueue = Promise.resolve();
     this.recentLiveTranscripts = [];
     this.recentAgentUtterances = [];
+    this.bargeIn = new BargeInController();
   }
 
   isDemoStartConfirmation(transcript) {
@@ -112,6 +115,14 @@ export class DemoOrchestrator {
       return new RegExp(this.config.agent.confirmationPattern, "iu").test(normalized);
     } catch {
       return /start demo|start presenting|go ahead|you can start|do it/i.test(normalized);
+    }
+  }
+
+  async playWithSignal(audioPath, signal) {
+    if (this.config.audio.browserPlayback && this.demoController?.page) {
+      await playAudioInBrowser(this.demoController.page, audioPath);
+    } else {
+      await playAudio(audioPath, this.config.audio.playCommand, { signal });
     }
   }
 
@@ -129,10 +140,12 @@ export class DemoOrchestrator {
       speaker: this.config.sarvam.ttsSpeaker,
       pace: this.config.sarvam.ttsPace
     });
-    if (this.config.audio.browserPlayback && this.demoController?.page) {
-      await playAudioInBrowser(this.demoController.page, audioPath);
-    } else {
-      await playAudio(audioPath, this.config.audio.playCommand);
+    const controller = new AbortController();
+    this.bargeIn.beginSpeaking(controller);
+    try {
+      await this.playWithSignal(audioPath, controller.signal);
+    } finally {
+      this.bargeIn.endSpeaking();
     }
     return audioPath;
   }
@@ -198,6 +211,10 @@ export class DemoOrchestrator {
   }
 
   async handleLiveTranscript(transcript, filePath, { onTranscript } = {}) {
+    if (this.bargeIn.isSpeaking) {
+      this.bargeIn.onUserSpeech();
+      this.logger.info("Barge-in: user spoke while agent was talking; stopped playback.");
+    }
     const reason = this.liveTranscriptIgnoreReason(transcript);
     if (reason) {
       this.logger.info(`Ignoring live transcript from ${filePath}: ${reason}.`);
@@ -351,15 +368,32 @@ export class DemoOrchestrator {
 
   startLiveAudioController({ onTranscript } = {}) {
     const abortController = new AbortController();
-    const capture = startAudioCapture({
-      captureCommand: this.config.audio.captureCommand,
-      inputDir: this.config.paths.audioInputDir,
-      logger: this.logger
-    });
-    const watcher = this.startAudioQuestionWatcher({
+    const stream = startLiveAudioStream({
+      streamCommand: this.config.audio.streamCommand,
+      apiKey: this.config.sarvam.apiKey,
+      logger: this.logger,
+      sampleRate: this.config.audio.streamSampleRate,
+      model: this.config.sarvam.sttModel,
+      mode: this.config.sarvam.sttMode,
+      languageCode: this.config.sarvam.sttLanguageCode,
       signal: abortController.signal,
-      onTranscript
+      onTranscript: async (transcript, source) => {
+        await this.handleLiveTranscript(transcript, source, { onTranscript });
+      }
     });
+    const capture = stream.enabled
+      ? null
+      : startAudioCapture({
+          captureCommand: this.config.audio.captureCommand,
+          inputDir: this.config.paths.audioInputDir,
+          logger: this.logger
+        });
+    const watcher = stream.enabled
+      ? Promise.resolve()
+      : this.startAudioQuestionWatcher({
+          signal: abortController.signal,
+          onTranscript
+        });
     const captionWatcher = this.startMeetCaptionWatcher({
       signal: abortController.signal,
       onTranscript
@@ -370,6 +404,9 @@ export class DemoOrchestrator {
       watcher,
       stop: async () => {
         abortController.abort();
+        if (stream?.enabled) {
+          await stream.stop();
+        }
         if (capture?.enabled) {
           await capture.stop();
         }
@@ -521,12 +558,29 @@ export class DemoOrchestrator {
 
     if (listenAudio) {
       this.logger.info("Audio question watcher is enabled.");
-      capture = startAudioCapture({
-        captureCommand: this.config.audio.captureCommand,
-        inputDir: this.config.paths.audioInputDir,
-        logger: this.logger
+      const stream = startLiveAudioStream({
+        streamCommand: this.config.audio.streamCommand,
+        apiKey: this.config.sarvam.apiKey,
+        logger: this.logger,
+        sampleRate: this.config.audio.streamSampleRate,
+        model: this.config.sarvam.sttModel,
+        mode: this.config.sarvam.sttMode,
+        languageCode: this.config.sarvam.sttLanguageCode,
+        signal: abortController.signal,
+        onTranscript: async (transcript, source) => {
+          await this.handleLiveTranscript(transcript, source);
+        }
       });
-      this.startAudioQuestionWatcher({ signal: abortController.signal });
+      capture = stream.enabled
+        ? stream
+        : startAudioCapture({
+            captureCommand: this.config.audio.captureCommand,
+            inputDir: this.config.paths.audioInputDir,
+            logger: this.logger
+          });
+      if (!stream.enabled) {
+        this.startAudioQuestionWatcher({ signal: abortController.signal });
+      }
     }
 
     try {
