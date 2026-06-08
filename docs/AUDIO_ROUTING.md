@@ -17,7 +17,9 @@ The agent supports file-based questions through:
 npm run agent -- listen-audio
 ```
 
-The Meet launch flow now starts `AUDIO_CAPTURE_COMMAND` automatically when you pass `--listen-audio`, set `AUDIO_AUTO_LISTEN=true`, or provide `AUDIO_CAPTURE_COMMAND` in live mode. Audio files are processed only after the file size stabilizes, which avoids sending partially written ffmpeg segments to Sarvam STT.
+The Meet launch flow now starts `AUDIO_CAPTURE_COMMAND` automatically when you pass `--listen-audio`, set `AUDIO_AUTO_LISTEN=true`, or provide `AUDIO_CAPTURE_COMMAND` in live mode. Each capture start clears old audio segment files from `AUDIO_INPUT_DIR`, then the watcher ignores any files that already existed when it started. New audio files are processed only after the file size stabilizes, which avoids sending partially written ffmpeg segments to Sarvam STT.
+
+The live transcript path also filters common filler, duplicate transcripts, and likely echo from the agent's own recent TTS. This is a guardrail for imperfect routing; the primary fix for echo is still to keep the agent microphone route and Meet speaker capture route separate.
 
 ## Command Contract
 
@@ -25,10 +27,10 @@ The recorder must write complete audio files into `AUDIO_INPUT_DIR`. WAV mono at
 
 ```bash
 AUDIO_INPUT_DIR=recordings
-AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f pulse -i rd_meet_out.monitor -ac 1 -ar 16000 -f segment -segment_time 8 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
+AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f pulse -i rd_meet_out.monitor -ac 1 -ar 16000 -f segment -segment_time 5 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
 ```
 
-Use segment lengths of 6 to 10 seconds for live Q&A. Shorter chunks feel more responsive but may split questions. Longer chunks reduce partial transcripts but add delay.
+Use segment lengths of 4 to 6 seconds for live Q&A. Shorter chunks feel more responsive but may split questions. Longer chunks reduce partial transcripts but add delay. Sarvam's current STT guidance recommends `saaras:v3`, 16 kHz audio, and streaming/VAD for true real-time agents; this project still uses REST STT chunks for bounded Meet integration.
 
 ## macOS With BlackHole
 
@@ -48,7 +50,7 @@ Example capture command for a BlackHole audio device:
 
 ```bash
 AUDIO_INPUT_DIR=recordings
-AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f avfoundation -i ":BlackHole 2ch" -ac 1 -ar 16000 -f segment -segment_time 8 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
+AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f avfoundation -i ":BlackHole 2ch" -ac 1 -ar 16000 -f segment -segment_time 5 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
 ```
 
 For TTS into Meet, either set the system output used by `afplay` to BlackHole before launching the agent, or use Loopback for per-app routing.
@@ -66,7 +68,7 @@ Example:
 
 ```bash
 AUDIO_INPUT_DIR=recordings
-AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f avfoundation -i ":RetailDaddy Meet Capture" -ac 1 -ar 16000 -f segment -segment_time 8 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
+AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f avfoundation -i ":RetailDaddy Meet Capture" -ac 1 -ar 16000 -f segment -segment_time 5 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
 ```
 
 Keep the agent microphone route and the Meet capture route separate. That is the main difference between a usable demo agent and an audio feedback loop.
@@ -94,7 +96,7 @@ Use the monitor of `rd_tts` as the Google Meet microphone. Route Chromium/Meet s
 
 ```bash
 AUDIO_INPUT_DIR=recordings
-AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f pulse -i rd_meet_out.monitor -ac 1 -ar 16000 -f segment -segment_time 8 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
+AUDIO_CAPTURE_COMMAND='ffmpeg -hide_banner -nostdin -loglevel warning -f pulse -i rd_meet_out.monitor -ac 1 -ar 16000 -f segment -segment_time 5 -strftime 1 "${AUDIO_INPUT_DIR}/question-%Y%m%d-%H%M%S.wav"'
 ```
 
 To send Sarvam TTS playback into the Meet microphone sink while keeping browser output on the capture sink:
@@ -116,3 +118,7 @@ Before a client call:
 4. Join a test Meet from another device and verify the capture route records only the other participant, not the agent's own TTS.
 
 If STT repeats the agent's answers, your TTS output is leaking into the capture route. Split the virtual devices and test again.
+
+## Sarvam Streaming Upgrade Path
+
+For a more natural voice agent, replace ffmpeg file segments plus REST STT with Sarvam's WebSocket streaming STT. The streaming API can return VAD `speech_start` and `speech_end` signals and final transcripts, so the orchestrator can pause the demo when the client interrupts and answer immediately after speech end. Keep the current Sarvam Bulbul v3 streaming TTS path for output, or move TTS to Sarvam's WebSocket API if you need lower first-audio latency.

@@ -104,7 +104,7 @@ export class GoogleMeetAgent {
     await this.enterMeetingCodeFromHomeIfNeeded();
     await this.dismissPrejoinToggles();
     await this.fillDisplayNameIfNeeded();
-    const joined = await this.clickJoinButton();
+    const joined = (await this.isInMeetRoom()) || (await this.clickJoinButton());
     if (!joined) {
       throw new Error(
         "Meet join was not confirmed. The agent may need to be admitted by the host or signed in with an invited Google account."
@@ -270,6 +270,11 @@ export class GoogleMeetAgent {
   }
 
   async clickJoinButton() {
+    if (await this.isInMeetRoom()) {
+      this.logger.info("Meet room controls are already visible; treating the agent as joined.");
+      return true;
+    }
+
     const candidates = [
       this.meetPage.getByRole("button", { name: /^ask to join$/i }).first(),
       this.meetPage.getByRole("button", { name: /^join now$/i }).first(),
@@ -302,14 +307,40 @@ export class GoogleMeetAgent {
       }
     }
 
+    if (await this.waitForMeetRoom({ timeoutMs: 5000, quiet: true })) {
+      this.logger.info("Meet room controls became visible after navigation; treating the agent as joined.");
+      return true;
+    }
+
     await this.logMeetButtonLabels();
     this.logger.warn("Could not find a stable Meet join button. The browser remains open for manual join.");
     return false;
   }
 
-  async waitForMeetRoom() {
+  async isInMeetRoom() {
+    const roomControls = [
+      this.meetPage.getByRole("button", { name: /leave call/i }).first(),
+      this.meetPage.getByRole("button", { name: /share screen/i }).first(),
+      this.meetPage.getByRole("button", { name: /turn off microphone/i }).first(),
+      this.meetPage.locator("button[aria-label*='Leave call' i]").first(),
+      this.meetPage.locator("button[aria-label*='Share screen' i]").first(),
+      this.meetPage.locator("button[aria-label*='Turn off microphone' i]").first()
+    ];
+
+    for (const control of roomControls) {
+      if (await control.isVisible({ timeout: 250 }).catch(() => false)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async waitForMeetRoom({ timeoutMs = 60000, quiet = false } = {}) {
     const markers = [
       this.meetPage.getByRole("button", { name: /leave call|leave/i }).first(),
+      this.meetPage.getByRole("button", { name: /share screen/i }).first(),
+      this.meetPage.getByRole("button", { name: /turn off microphone/i }).first(),
       this.meetPage.getByRole("button", { name: /present now|present/i }).first(),
       this.meetPage.getByText(/you are in the meeting|meeting details/i).first(),
       this.meetPage.getByText(/camera not found/i).first(),
@@ -325,7 +356,7 @@ export class GoogleMeetAgent {
     ];
 
     const startedAt = Date.now();
-    while (Date.now() - startedAt < 60000) {
+    while (Date.now() - startedAt < timeoutMs) {
       for (const blockedMarker of blockedMarkers) {
         if (await blockedMarker.isVisible({ timeout: 250 }).catch(() => false)) {
           const text = await blockedMarker.textContent().catch(() => "");
@@ -350,7 +381,9 @@ export class GoogleMeetAgent {
       await this.meetPage.waitForTimeout(1000);
     }
 
-    this.logger.warn("Meet room confirmation was not detected. If the agent is waiting to be admitted, admit it in Meet.");
+    if (!quiet) {
+      this.logger.warn("Meet room confirmation was not detected. If the agent is waiting to be admitted, admit it in Meet.");
+    }
     return false;
   }
 

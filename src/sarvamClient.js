@@ -25,20 +25,23 @@ export class SarvamClient {
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      let response;
       try {
         const { url, init } = buildRequest();
-        const response = await this.fetchImpl(url, init);
-        if (response.ok) return response;
-
-        const body = await response.text();
-        lastError = new Error(`${label} failed with HTTP ${response.status}: ${body}`);
-        if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === maxRetries) {
-          throw lastError;
-        }
+        response = await this.fetchImpl(url, init);
       } catch (error) {
         lastError = error;
         if (!isRetryableFetchError(error) || attempt === maxRetries) {
           throw error;
+        }
+      }
+
+      if (response?.ok) return response;
+      if (response) {
+        const body = await response.text();
+        lastError = new Error(`${label} failed with HTTP ${response.status}: ${body}`);
+        if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === maxRetries) {
+          throw lastError;
         }
       }
 
@@ -55,29 +58,37 @@ export class SarvamClient {
     const fileBuffer = fs.readFileSync(absolutePath);
     const fileName = path.basename(absolutePath);
 
-    const formData = new FormData();
-    formData.set("file", new Blob([fileBuffer]), fileName);
-    formData.set("model", options.model || "saaras:v3");
+    const response = await this.requestWithRetries("Sarvam STT", () => {
+      const formData = new FormData();
+      formData.set("file", new Blob([fileBuffer]), fileName);
+      formData.set("model", options.model || "saaras:v3");
 
-    if (options.mode) formData.set("mode", options.mode);
-    if (options.languageCode && options.languageCode !== "unknown") {
-      formData.set("language_code", options.languageCode);
-    }
-    if (options.inputAudioCodec) formData.set("input_audio_codec", options.inputAudioCodec);
-    if (options.withTimestamps != null) {
-      formData.set("with_timestamps", String(Boolean(options.withTimestamps)));
-    }
+      if (options.mode) formData.set("mode", options.mode);
+      if (options.languageCode && options.languageCode !== "unknown") {
+        formData.set("language_code", options.languageCode);
+      }
+      if (options.inputAudioCodec) formData.set("input_audio_codec", options.inputAudioCodec);
+      if (options.withTimestamps != null) {
+        formData.set("with_timestamps", String(Boolean(options.withTimestamps)));
+      }
 
-    const response = await fetch(`${SARVAM_BASE_URL}/speech-to-text`, {
-      method: "POST",
-      headers: {
-        "api-subscription-key": this.apiKey
-      },
-      body: formData
+      return {
+        url: `${SARVAM_BASE_URL}/speech-to-text`,
+        init: {
+          method: "POST",
+          headers: {
+            "api-subscription-key": this.apiKey
+          },
+          body: formData
+        }
+      };
     });
 
-    await ensureOkResponse(response, "Sarvam STT");
-    return response.json();
+    const json = await response.json();
+    return {
+      ...json,
+      transcript: String(json.transcript || json.text || "").trim()
+    };
   }
 
   async textToSpeechStream(text, outputPath, options = {}) {
@@ -93,16 +104,17 @@ export class SarvamClient {
       temperature: options.temperature ?? 0.6
     };
 
-    const response = await fetch(`${SARVAM_BASE_URL}/text-to-speech/stream`, {
-      method: "POST",
-      headers: {
-        "api-subscription-key": this.apiKey,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    await ensureOkResponse(response, "Sarvam TTS stream");
+    const response = await this.requestWithRetries("Sarvam TTS stream", () => ({
+      url: `${SARVAM_BASE_URL}/text-to-speech/stream`,
+      init: {
+        method: "POST",
+        headers: {
+          "api-subscription-key": this.apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      }
+    }));
     const bytes = Buffer.from(await response.arrayBuffer());
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, bytes);
@@ -110,22 +122,24 @@ export class SarvamClient {
   }
 
   async chat(messages, options = {}) {
-    const response = await fetch(`${SARVAM_BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "api-subscription-key": this.apiKey,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: options.model || "sarvam-105b",
-        messages,
-        reasoning_effort: options.reasoningEffort ?? null,
-        temperature: options.temperature ?? 0.35,
-        max_tokens: options.maxTokens ?? 600
-      })
-    });
+    const response = await this.requestWithRetries("Sarvam chat", () => ({
+      url: `${SARVAM_BASE_URL}/v1/chat/completions`,
+      init: {
+        method: "POST",
+        headers: {
+          "api-subscription-key": this.apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: options.model || "sarvam-105b",
+          messages,
+          reasoning_effort: options.reasoningEffort ?? null,
+          temperature: options.temperature ?? 0.35,
+          max_tokens: options.maxTokens ?? 600
+        })
+      }
+    }));
 
-    await ensureOkResponse(response, "Sarvam chat");
     const json = await response.json();
     return json.choices?.[0]?.message?.content?.trim() || "";
   }

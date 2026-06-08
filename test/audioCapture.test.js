@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
+  clearAudioCaptureFiles,
   expandAudioCapturePlaceholders,
   parseAudioCaptureCommand,
   startAudioCapture,
@@ -105,5 +106,22 @@ describe("audio capture command helpers", () => {
     assert.equal(capture.enabled, true);
     assert.equal(result.code, 0);
     assert.equal(fs.readFileSync(outputFile, "utf8"), "ok");
+  });
+
+  it("clears stale capture files while leaving unrelated files alone", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "retaildaddy-audio-cleanup-"));
+    const staleWav = path.join(inputDir, "question-000.wav");
+    const stalePart = path.join(inputDir, "question-001.part");
+    const note = path.join(inputDir, "notes.txt");
+    fs.writeFileSync(staleWav, "old");
+    fs.writeFileSync(stalePart, "old");
+    fs.writeFileSync(note, "keep");
+
+    const removed = clearAudioCaptureFiles(inputDir, { logger: silentLogger });
+
+    assert.equal(removed, 2);
+    assert.equal(fs.existsSync(staleWav), false);
+    assert.equal(fs.existsSync(stalePart), false);
+    assert.equal(fs.readFileSync(note, "utf8"), "keep");
   });
 });
