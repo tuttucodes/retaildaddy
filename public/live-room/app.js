@@ -173,6 +173,9 @@ function connectEvents() {
     phone: state.phone
   });
   state.eventSource = new EventSource(`/events?${params.toString()}`);
+  state.eventSource.onopen = () => {
+    setStatus(`Connected as ${state.name}`);
+  };
 
   state.eventSource.addEventListener("room_status", (event) => {
     const data = JSON.parse(event.data);
@@ -234,7 +237,7 @@ function connectEvents() {
   });
 
   state.eventSource.onerror = () => {
-    setStatus("Connection interrupted");
+    setStatus("Room event stream reconnecting...");
   };
 }
 

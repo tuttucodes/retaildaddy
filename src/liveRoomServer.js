@@ -334,8 +334,10 @@ function createLiveRoomServer({
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
       Connection: "keep-alive"
     });
+    response.flushHeaders?.();
     const client = {
       response,
       name,
@@ -352,6 +354,9 @@ function createLiveRoomServer({
         participants: participantList()
       })}\n\n`
     );
+    const heartbeat = setInterval(() => {
+      response.write(`event: ping\ndata: ${safeJson({ at: Date.now() })}\n\n`);
+    }, 15000);
     broadcast("participant_joined", {
       id: clientId,
       name,
@@ -361,6 +366,7 @@ function createLiveRoomServer({
       participants: participantList()
     });
     request.on("close", () => {
+      clearInterval(heartbeat);
       clients.delete(clientId);
       broadcast("participant_left", {
         id: clientId,
