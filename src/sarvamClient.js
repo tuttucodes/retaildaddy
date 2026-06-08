@@ -128,6 +128,43 @@ export class SarvamClient {
     return outputPath;
   }
 
+  /**
+   * Synthesize speech as raw 8kHz mu-law bytes, ready to frame directly to Twilio.
+   * Uses the REST /text-to-speech/stream endpoint with output_audio_codec "mulaw",
+   * which returns raw mu-law audio (no WAV container) — the reliable telephony path.
+   * @param {string} text
+   * @param {{languageCode?: string, speaker?: string, model?: string, pace?: number, sampleRate?: number, signal?: AbortSignal}} [options]
+   * @returns {Promise<Buffer>} raw mu-law audio bytes
+   */
+  async textToSpeechMulaw(text, options = {}) {
+    const payload = {
+      text,
+      target_language_code: options.languageCode || "en-IN",
+      speaker: options.speaker || "shubh",
+      pace: options.pace ?? 1,
+      model: options.model || "bulbul:v3",
+      output_audio_codec: "mulaw",
+      speech_sample_rate: options.sampleRate || 8000
+    };
+
+    const response = await this.requestWithRetries(
+      "Sarvam TTS mulaw",
+      () => ({
+        url: `${SARVAM_BASE_URL}/text-to-speech/stream`,
+        init: {
+          method: "POST",
+          headers: {
+            "api-subscription-key": this.apiKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        }
+      }),
+      { signal: options.signal }
+    );
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   async analyzeCallFile(filePath, questions, options = {}) {
     const absolutePath = path.resolve(filePath);
     const fileBuffer = fs.readFileSync(absolutePath);

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { detectSarvamTtsLanguageCode } from "./callingAgent.js";
-import { SarvamStreamingStt, streamSarvamTextToSpeechMulaw } from "./sarvamStreaming.js";
+import { SarvamStreamingStt } from "./sarvamStreaming.js";
 import {
   chunkBuffer,
   decodeMuLawToPcm16,
@@ -236,27 +236,25 @@ class TwilioMediaStreamSession {
     this.processing = true;
     try {
       const languageCode = detectSarvamTtsLanguageCode(text, "en-IN");
-      if (this.config.calling.streamTtsEnabled) {
-        await streamSarvamTextToSpeechMulaw({
-          apiKey: this.config.sarvam.apiKey,
-          text,
-          languageCode,
-          speaker: this.config.calling.ttsSpeaker || this.config.sarvam.ttsSpeaker,
-          model: this.config.sarvam.ttsModel,
-          pace: this.config.calling.ttsPace ?? this.config.sarvam.ttsPace,
-          minBufferSize: this.config.calling.streamTtsMinBufferSize,
-          maxChunkLength: this.config.calling.streamTtsMaxChunkLength,
-          logger: this.logger,
-          signal: playback.controller.signal,
-          onAudio: (muLaw) => this.sendMedia(muLaw)
-        });
-      } else {
-        await this.speakViaRestTts(text, label);
-      }
+      // Primary path: REST /text-to-speech/stream returns raw 8kHz mu-law, framed
+      // straight to Twilio. Reliable; avoids the WS config + WAV-parsing failure modes.
+      const muLaw = await this.agent.sarvamClient.textToSpeechMulaw(text, {
+        languageCode,
+        speaker: this.config.calling.ttsSpeaker || this.config.sarvam.ttsSpeaker,
+        model: this.config.sarvam.ttsModel,
+        pace: this.config.calling.ttsPace ?? this.config.sarvam.ttsPace,
+        sampleRate: this.config.calling.ttsSampleRate || 8000,
+        signal: playback.controller.signal
+      });
+      if (!playback.interrupted) this.sendMedia(muLaw);
     } catch (error) {
       if (playback.interrupted) return;
-      this.logger.warn(`Sarvam streaming TTS failed for ${this.callId}; falling back to REST TTS. ${error.message}`);
-      await this.speakViaRestTts(text, label);
+      this.logger.warn(`Sarvam mulaw TTS failed for ${this.callId}; falling back to WAV REST TTS. ${error.message}`);
+      try {
+        await this.speakViaRestTts(text, label);
+      } catch (fallbackError) {
+        this.logger.error(`REST WAV TTS fallback also failed for ${this.callId}: ${fallbackError.message}`);
+      }
     } finally {
       if (!playback.interrupted) this.sendMark(`${label}-${++this.markCounter}`);
       if (this.playback === playback) this.playback = null;
