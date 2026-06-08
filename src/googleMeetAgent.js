@@ -92,6 +92,7 @@ export class GoogleMeetAgent {
     this.meetPage = await this.context.newPage();
     await this.meetPage.goto(this.config.browser.meetUrl, { waitUntil: "domcontentloaded" });
 
+    await this.enterMeetingCodeFromHomeIfNeeded();
     await this.dismissPrejoinToggles();
     await this.fillDisplayNameIfNeeded();
     await this.clickJoinButton();
@@ -105,6 +106,98 @@ export class GoogleMeetAgent {
     }
 
     return this.meetPage;
+  }
+
+  extractMeetCode() {
+    try {
+      const url = new URL(this.config.browser.meetUrl);
+      const pathCode = url.pathname
+        .split("/")
+        .map((part) => part.trim())
+        .find((part) => /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i.test(part));
+
+      if (pathCode) return pathCode;
+    } catch {
+      // Fall through to the raw string parser.
+    }
+
+    const match = this.config.browser.meetUrl.match(/[a-z]{3}-[a-z]{4}-[a-z]{3}/i);
+    return match ? match[0] : "";
+  }
+
+  async enterMeetingCodeFromHomeIfNeeded() {
+    const currentUrl = this.meetPage.url();
+    const isMeetHome =
+      /workspace\.google\.com\/products\/meet/i.test(currentUrl) ||
+      (await this.meetPage
+        .getByText(/join a meeting now/i)
+        .first()
+        .isVisible({ timeout: 2500 })
+        .catch(() => false));
+
+    if (!isMeetHome) return;
+
+    const meetCode = this.extractMeetCode();
+    if (!meetCode) {
+      this.logger.warn("Meet opened the home page, but no meeting code could be extracted from the URL.");
+      return;
+    }
+
+    this.logger.warn("Meet link opened the home page. Entering the meeting code manually.");
+
+    const enterCodeTriggers = [
+      this.meetPage.getByRole("link", { name: /enter code/i }).first(),
+      this.meetPage.getByRole("button", { name: /enter code/i }).first(),
+      this.meetPage.getByText(/enter code/i).first()
+    ];
+
+    for (const trigger of enterCodeTriggers) {
+      try {
+        await trigger.click({ timeout: 4000 });
+        break;
+      } catch {
+        // Try next Meet home-page variant.
+      }
+    }
+
+    const codeInputs = [
+      this.meetPage.locator("input[aria-label*='meeting code' i]").first(),
+      this.meetPage.locator("input[placeholder*='meeting code' i]").first(),
+      this.meetPage.locator("input[type='text']").first()
+    ];
+
+    let filled = false;
+    for (const input of codeInputs) {
+      try {
+        await input.fill(meetCode, { timeout: 5000 });
+        filled = true;
+        break;
+      } catch {
+        // Try next input selector.
+      }
+    }
+
+    if (!filled) {
+      this.logger.warn("Meet home-page meeting code input was not found.");
+      return;
+    }
+
+    const joinButtons = [
+      this.meetPage.getByRole("button", { name: /^join$/i }).first(),
+      this.meetPage.getByRole("button", { name: /join/i }).first()
+    ];
+
+    for (const button of joinButtons) {
+      try {
+        await button.click({ timeout: 5000 });
+        await this.meetPage.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+        return;
+      } catch {
+        // The field also accepts Enter.
+      }
+    }
+
+    await this.meetPage.keyboard.press("Enter").catch(() => {});
   }
 
   async dismissPrejoinToggles() {
