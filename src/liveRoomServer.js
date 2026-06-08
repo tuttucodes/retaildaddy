@@ -235,9 +235,19 @@ function createLiveRoomServer({
   async function makeAnswer(question) {
     const startedAt = Date.now();
     const answer = await brain.answer(question);
-    const audioPath = createAudioFilePath(audioDir, "live-answer", "wav");
-    const languageCode = detectSarvamTtsLanguageCode(answer, "en-IN");
-    await sarvamClient.textToSpeechStream(answer, audioPath, {
+    const speech = await makeSpeech(answer, "live-answer");
+
+    return {
+      answer,
+      ...speech,
+      responseMs: Date.now() - startedAt
+    };
+  }
+
+  async function makeSpeech(text, label = "live-speech") {
+    const audioPath = createAudioFilePath(audioDir, label, "wav");
+    const languageCode = detectSarvamTtsLanguageCode(text, "en-IN");
+    await sarvamClient.textToSpeechStream(text, audioPath, {
       model: config.sarvam.ttsModel,
       languageCode,
       speaker: config.sarvam.ttsSpeaker,
@@ -245,11 +255,57 @@ function createLiveRoomServer({
     });
 
     return {
-      answer,
       audioUrl: `/audio/${encodeURIComponent(path.basename(audioPath))}`,
-      languageCode,
-      responseMs: Date.now() - startedAt
+      languageCode
     };
+  }
+
+  function agentPresentationPayload(mode = "overview") {
+    return {
+      mode,
+      title: "RetailDaddy Operations Dashboard",
+      subtitle: "Live AI-guided product demo",
+      focus: mode === "inventory" ? "Inventory health and reorder signals" : "Sales, stock, orders, and exceptions",
+      metrics: [
+        { label: "Today sales", value: "₹2.84L", trend: "+12%" },
+        { label: "Low stock SKUs", value: "18", trend: "Needs action" },
+        { label: "Pending orders", value: "42", trend: "7 priority" },
+        { label: "Store alerts", value: "6", trend: "Open" }
+      ],
+      rows: [
+        { sku: "RD-1042", item: "Premium Rice 10kg", stock: "12 left", status: "Reorder" },
+        { sku: "RD-1188", item: "Groundnut Oil 1L", stock: "86 left", status: "Healthy" },
+        { sku: "RD-2250", item: "Detergent Combo", stock: "21 left", status: "Watch" },
+        { sku: "RD-3301", item: "Snack Pack", stock: "7 left", status: "Critical" }
+      ]
+    };
+  }
+
+  function welcomeText(name) {
+    const firstName = String(name || "there").trim().split(/\s+/)[0] || "there";
+    return `Hi ${firstName}, I am RetailDaddy AI Agent. I am live now. You can speak in Malayalam or English, ask doubts, or click AI Demo and I will present the product.`;
+  }
+
+  async function speakToRoom(text, { requestId = crypto.randomUUID(), label = "live-speech" } = {}) {
+    const startedAt = Date.now();
+    const speech = await makeSpeech(text, label);
+    const payload = {
+      requestId,
+      transcript: "",
+      answer: text,
+      ...speech,
+      totalMs: Date.now() - startedAt
+    };
+    broadcast("agent_answer", payload);
+    return payload;
+  }
+
+  async function runAgentDemoIntro() {
+    broadcast("agent_presenting", agentPresentationPayload("overview"));
+    await speakToRoom(
+      "I am sharing the RetailDaddy operations dashboard now. First, look at the sales, low stock, pending orders, and alert cards. This is where an owner gets a quick operational view before going into inventory or orders.",
+      { label: "demo-intro" }
+    );
   }
 
   async function handleText(request, response) {
@@ -375,6 +431,13 @@ function createLiveRoomServer({
     sendJson(response, 200, { ok: true });
   }
 
+  async function handleDemoStart(_request, response) {
+    sendJson(response, 202, { ok: true });
+    runAgentDemoIntro().catch((error) => {
+      logger.warn(`AI demo intro failed: ${error.message}`);
+    });
+  }
+
   async function handleJoin(request, response) {
     const body = await readJsonBody(request);
     const clientId = String(body.clientId || crypto.randomUUID()).trim();
@@ -400,6 +463,15 @@ function createLiveRoomServer({
         joinedAt: client.joinedAt,
         participants: participantList()
       });
+      setTimeout(() => {
+        broadcast("agent_presenting", agentPresentationPayload("overview"));
+        speakToRoom(welcomeText(name), {
+          requestId: `welcome-${clientId}`,
+          label: "welcome"
+        }).catch((error) => {
+          logger.warn(`Welcome speech failed: ${error.message}`);
+        });
+      }, 700);
     }
 
     sendJson(response, 200, {
@@ -549,6 +621,10 @@ function createLiveRoomServer({
       }
       if (request.method === "POST" && url.pathname === "/api/signal") {
         await handleSignal(request, response);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/demo/start") {
+        await handleDemoStart(request, response);
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/text") {

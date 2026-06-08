@@ -2,6 +2,7 @@
 node_modules/
 .env
 .tmp/
+.live-room-tmp/
 recordings/
 audio-out/
 playwright-profile/

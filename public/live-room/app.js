@@ -39,6 +39,7 @@ const els = {
   micBtn: document.getElementById("micBtn"),
   camBtn: document.getElementById("camBtn"),
   shareBtn: document.getElementById("shareBtn"),
+  demoBtn: document.getElementById("demoBtn"),
   leaveBtn: document.getElementById("leaveBtn"),
   chatToggle: document.getElementById("chatToggle"),
   transcriptPanel: document.getElementById("transcriptPanel"),
@@ -89,6 +90,12 @@ function createVideo(stream, { muted = false } = {}) {
   return video;
 }
 
+function clearStage() {
+  for (const child of Array.from(els.screenStage.children)) {
+    if (child !== els.stageEmpty) child.remove();
+  }
+}
+
 function renderParticipants() {
   els.participantList.innerHTML = "";
   for (const participant of state.participants.values()) {
@@ -121,9 +128,70 @@ function renderParticipants() {
 
 function showStageStream(stream) {
   els.stageEmpty.hidden = true;
-  const previous = els.screenStage.querySelector("video");
-  if (previous) previous.remove();
+  clearStage();
   els.screenStage.appendChild(createVideo(stream, { muted: true }));
+}
+
+function showAgentScreen(payload = {}) {
+  els.stageEmpty.hidden = true;
+  clearStage();
+
+  const metrics = payload.metrics || [];
+  const rows = payload.rows || [];
+  const screen = document.createElement("section");
+  screen.className = "ai-screen";
+  screen.innerHTML = `
+    <header class="ai-screen-header">
+      <div>
+        <span>RetailDaddy</span>
+        <h2>${escapeHtml(payload.title || "RetailDaddy Operations Dashboard")}</h2>
+        <p>${escapeHtml(payload.subtitle || "AI-guided product walkthrough")}</p>
+      </div>
+      <strong>AI presenting</strong>
+    </header>
+    <div class="ai-focus">
+      <span>Focus</span>
+      <strong>${escapeHtml(payload.focus || "Sales, stock, orders, and exceptions")}</strong>
+    </div>
+    <div class="ai-metrics">
+      ${metrics
+        .map(
+          (metric) => `
+            <article>
+              <span>${escapeHtml(metric.label)}</span>
+              <strong>${escapeHtml(metric.value)}</strong>
+              <small>${escapeHtml(metric.trend)}</small>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+    <div class="ai-worktable">
+      <div class="ai-table-head">
+        <strong>Inventory watchlist</strong>
+        <span>Live store signal</span>
+      </div>
+      <table>
+        <thead><tr><th>SKU</th><th>Item</th><th>Stock</th><th>Status</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.sku)}</td>
+                  <td>${escapeHtml(row.item)}</td>
+                  <td>${escapeHtml(row.stock)}</td>
+                  <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  els.screenStage.appendChild(screen);
+  els.shareBtn.classList.remove("active");
 }
 
 async function ensureLocalMedia() {
@@ -249,6 +317,12 @@ function processRoomEvent(eventName, data) {
 
   if (eventName === "agent_answer") {
     handleAgentAnswer(data);
+    return;
+  }
+
+  if (eventName === "agent_presenting") {
+    showAgentScreen(data);
+    els.latencyChip.textContent = "AI presenting RetailDaddy";
   }
 }
 
@@ -461,6 +535,8 @@ async function handleAgentAnswer(data) {
         audio.onended = resolve;
         audio.onerror = resolve;
       });
+    } catch (error) {
+      addMessage("agent", `Audio playback was blocked: ${error.message}`, "System");
     } finally {
       state.aiSpeaking = false;
       els.aiState.textContent = "Listening";
@@ -477,6 +553,15 @@ async function sendTextQuestion(question) {
   });
   const result = await response.json();
   handleAgentAnswer(result);
+}
+
+async function startAiDemo() {
+  els.demoBtn.classList.add("active");
+  try {
+    await fetch("/api/demo/start", { method: "POST" });
+  } finally {
+    window.setTimeout(() => els.demoBtn.classList.remove("active"), 1800);
+  }
 }
 
 async function toggleMic() {
@@ -573,6 +658,7 @@ els.joinForm.addEventListener("submit", async (event) => {
 els.micBtn.addEventListener("click", toggleMic);
 els.camBtn.addEventListener("click", toggleCamera);
 els.shareBtn.addEventListener("click", () => shareScreen().catch((error) => addMessage("agent", error.message, "System")));
+els.demoBtn.addEventListener("click", () => startAiDemo().catch((error) => addMessage("agent", error.message, "System")));
 els.leaveBtn.addEventListener("click", leaveRoom);
 els.chatToggle.addEventListener("click", () => {
   els.transcriptPanel.hidden = !els.transcriptPanel.hidden;
