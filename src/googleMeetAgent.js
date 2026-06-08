@@ -352,6 +352,106 @@ export class GoogleMeetAgent {
     }
   }
 
+  async getRemoteAudioState() {
+    if (!this.meetPage || this.meetPage.isClosed()) {
+      return {
+        hasMeetPage: false,
+        remoteParticipantCount: 0,
+        remoteUnmuted: true,
+        reason: "no Meet page available"
+      };
+    }
+
+    const selfNames = [
+      this.config.browser.meetDisplayName,
+      this.config.agent?.name,
+      "Ai Agent",
+      "AI Agent"
+    ]
+      .filter(Boolean)
+      .map((name) => String(name).toLowerCase());
+
+    await this.revealMeetControls();
+
+    return this.meetPage.evaluate(({ selfNames }) => {
+      const visibleText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          box.width > 0 &&
+          box.height > 0
+        );
+      };
+      const isSelfLabel = (label) => {
+        const lower = label.toLowerCase();
+        return selfNames.some((name) => name && lower.includes(name));
+      };
+
+      const pageText = visibleText(document.body?.innerText || "");
+      const labels = Array.from(document.querySelectorAll("[aria-label], [data-tooltip], [title]"))
+        .filter(isVisible)
+        .map((element) =>
+          visibleText(
+            [
+              element.getAttribute("aria-label"),
+              element.getAttribute("data-tooltip"),
+              element.getAttribute("title"),
+              element.textContent
+            ]
+              .filter(Boolean)
+              .join(" ")
+          )
+        )
+        .filter(Boolean);
+
+      const participantMatch =
+        labels.join(" ").match(/\bpeople\s+(\d+)\b/i) ||
+        pageText.match(/\bpeople\s+(\d+)\b/i) ||
+        pageText.match(/\bparticipants?\s+(\d+)\b/i);
+      const participantCount = participantMatch ? Number(participantMatch[1]) : 0;
+      const remoteParticipantCount = Math.max(0, participantCount - 1);
+
+      const remoteLabels = labels.filter((label) => !isSelfLabel(label));
+      const remoteMutedLabels = remoteLabels.filter((label) =>
+        /\b(is muted|muted|microphone is off|mic is off|audio is off)\b/i.test(label)
+      );
+      const remoteUnmutedLabels = remoteLabels.filter((label) =>
+        /\b(is unmuted|unmuted|microphone is on|mic is on|speaking)\b/i.test(label)
+      );
+
+      if (remoteUnmutedLabels.length > 0) {
+        return {
+          hasMeetPage: true,
+          remoteParticipantCount,
+          remoteUnmuted: true,
+          reason: `remote unmuted marker: ${remoteUnmutedLabels[0].slice(0, 120)}`
+        };
+      }
+
+      if (remoteParticipantCount > 0 && remoteMutedLabels.length >= remoteParticipantCount) {
+        return {
+          hasMeetPage: true,
+          remoteParticipantCount,
+          remoteUnmuted: false,
+          reason: `all ${remoteParticipantCount} remote participant(s) appear muted`
+        };
+      }
+
+      return {
+        hasMeetPage: true,
+        remoteParticipantCount,
+        remoteUnmuted: remoteParticipantCount > 0,
+        reason:
+          remoteParticipantCount > 0
+            ? "remote mute state not explicit; accepting non-silent Meet output"
+            : "no remote participant detected"
+      };
+    }, { selfNames });
+  }
+
   async waitForMeetRoom({ timeoutMs = 60000, quiet = false } = {}) {
     const markers = [
       this.meetPage.getByRole("button", { name: /leave call|leave/i }).first(),

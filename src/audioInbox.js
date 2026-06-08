@@ -68,6 +68,9 @@ export async function watchAudioInbox({
   logger,
   pollMs = 1500,
   stablePolls = 1,
+  minBytes = 24000,
+  minRms = 0.002,
+  shouldAcceptFile,
   signal
 }) {
   fs.mkdirSync(inputDir, { recursive: true });
@@ -116,7 +119,7 @@ export async function watchAudioInbox({
       seen.add(file);
       let shouldProcess;
       try {
-        shouldProcess = shouldProcessAudioFile(file);
+        shouldProcess = shouldProcessAudioFile(file, { minBytes, minRms });
       } catch (error) {
         logger.warn(`Skipping unreadable audio file ${path.basename(file)}: ${error.message}`);
         continue;
@@ -124,6 +127,9 @@ export async function watchAudioInbox({
 
       if (!shouldProcess) {
         logger.info(`Skipping silent or tiny audio file ${path.basename(file)}.`);
+        continue;
+      }
+      if (shouldAcceptFile && !(await shouldAcceptFile(file))) {
         continue;
       }
       try {

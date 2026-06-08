@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RetailDaddy Live Room</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="room-shell">
+      <section class="stage" aria-label="Meeting stage">
+        <header class="topbar">
+          <div>
+            <h1>RetailDaddy Live Room</h1>
+            <p id="roomStatus">Not joined</p>
+          </div>
+          <div class="model-chip" id="latencyChip">Sarvam voice agent</div>
+        </header>
+
+        <div class="stage-grid">
+          <div class="screen-stage" id="screenStage">
+            <div class="stage-empty" id="stageEmpty">
+              <strong>Screen share stage</strong>
+              <span>Use the share button to present your screen.</span>
+            </div>
+          </div>
+          <aside class="participants" aria-label="Participants">
+            <div class="participant-tile ai-tile speaking" id="aiTile">
+              <div class="avatar">AI</div>
+              <div>
+                <strong id="aiName">RetailDaddy AI</strong>
+                <span id="aiPhone">+91 AI Demo</span>
+              </div>
+              <small id="aiState">Listening</small>
+            </div>
+            <div class="participant-list" id="participantList"></div>
+          </aside>
+        </div>
+
+        <footer class="toolbar" aria-label="Meeting controls">
+          <button class="tool active" id="micBtn" type="button" title="Microphone">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11v1a7 7 0 0 0 14 0v-1"/><path d="M12 19v3"/><path d="M8 22h8"/></svg>
+            <span>Mic</span>
+          </button>
+          <button class="tool active" id="camBtn" type="button" title="Camera">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"/><path d="m16 10 4-3v10l-4-3"/></svg>
+            <span>Camera</span>
+          </button>
+          <button class="tool" id="shareBtn" type="button" title="Share screen">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H4z"/><path d="M9 20h6"/><path d="M12 16v4"/><path d="m9 10 3-3 3 3"/><path d="M12 7v7"/></svg>
+            <span>Share</span>
+          </button>
+          <button class="tool" id="chatToggle" type="button" title="Transcript">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4V5Z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
+            <span>Transcript</span>
+          </button>
+          <button class="tool leave" id="leaveBtn" type="button" title="Leave">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c4-4 10-4 14 0"/><path d="m8 12-3 3 3 3"/><path d="m16 12 3 3-3 3"/></svg>
+            <span>Leave</span>
+          </button>
+        </footer>
+      </section>
+
+      <aside class="transcript-panel" id="transcriptPanel" aria-label="Transcript">
+        <header>
+          <h2>Transcript</h2>
+          <span id="recordingState">Idle</span>
+        </header>
+        <div class="messages" id="messages"></div>
+        <form class="ask-form" id="askForm">
+          <input id="textQuestion" autocomplete="off" placeholder="Ask in any language..." />
+          <button type="submit">Send</button>
+        </form>
+      </aside>
+    </main>
+
+    <dialog class="join-dialog" id="joinDialog">
+      <form method="dialog" id="joinForm">
+        <h2>Join RetailDaddy Live Room</h2>
+        <label>
+          Name
+          <input id="joinName" required value="Rahul Babu" />
+        </label>
+        <label>
+          Phone
+          <input id="joinPhone" inputmode="tel" value="+91 " />
+        </label>
+        <p id="permissionNote">Mic, camera, and screen share need HTTPS. The AI listens only when your mic is unmuted and speech is detected.</p>
+        <button type="submit">Join room</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

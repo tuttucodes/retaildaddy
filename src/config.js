@@ -99,7 +99,12 @@ export function loadConfig() {
       playCommand: process.env.AUDIO_PLAY_COMMAND || "",
       captureCommand: process.env.AUDIO_CAPTURE_COMMAND || "",
       autoListen: boolFromEnv("AUDIO_AUTO_LISTEN", false),
-      browserPlayback: boolFromEnv("BROWSER_AUDIO_PLAYBACK", false)
+      browserPlayback: boolFromEnv("BROWSER_AUDIO_PLAYBACK", false),
+      inboxPollMs: numberFromEnv("AUDIO_INBOX_POLL_MS", 250),
+      inboxStablePolls: numberFromEnv("AUDIO_INBOX_STABLE_POLLS", 1),
+      minBytes: numberFromEnv("AUDIO_MIN_BYTES", 24000),
+      minRms: numberFromEnv("AUDIO_MIN_RMS", 0.002),
+      requireRemoteUnmuted: boolFromEnv("MEET_REQUIRE_REMOTE_UNMUTED", true)
     }
   };
 }

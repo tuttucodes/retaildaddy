@@ -83,4 +83,34 @@ describe("audio inbox watcher", () => {
 
     assert.deepEqual(processed, ["new.wav"]);
   });
+
+  it("lets callers reject a non-silent stable audio file before processing", async () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "retaildaddy-audio-inbox-"));
+    const abortController = new AbortController();
+    const processed = [];
+    let gateCalls = 0;
+
+    const watcher = watchAudioInbox({
+      inputDir,
+      logger: silentLogger,
+      pollMs: 10,
+      stablePolls: 1,
+      signal: abortController.signal,
+      shouldAcceptFile: async () => {
+        gateCalls += 1;
+        abortController.abort();
+        return false;
+      },
+      onFile: async (filePath) => {
+        processed.push(filePath);
+      }
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    writeToneWav(path.join(inputDir, "gated.wav"));
+    await watcher;
+
+    assert.equal(gateCalls, 1);
+    assert.deepEqual(processed, []);
+  });
 });

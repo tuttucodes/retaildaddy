@@ -283,12 +283,33 @@ export class DemoOrchestrator {
     return watcher;
   }
 
+  async shouldAcceptMeetAudioFile(filePath) {
+    if (!this.config.audio.requireRemoteUnmuted || !this.meetAgent?.meetPage) {
+      return true;
+    }
+
+    const state = await this.meetAgent.getRemoteAudioState();
+    if (state.remoteUnmuted) {
+      return true;
+    }
+
+    this.logger.info(
+      `Skipping ${filePath}: no unmuted remote participant detected (${state.reason}).`
+    );
+    return false;
+  }
+
   async listenForAudioQuestions({ signal, onTranscript } = {}) {
     requireSarvamKey(this.config);
     await watchAudioInbox({
       inputDir: this.config.paths.audioInputDir,
       logger: this.logger,
+      pollMs: this.config.audio.inboxPollMs,
+      stablePolls: this.config.audio.inboxStablePolls,
+      minBytes: this.config.audio.minBytes,
+      minRms: this.config.audio.minRms,
       signal,
+      shouldAcceptFile: (filePath) => this.shouldAcceptMeetAudioFile(filePath),
       onFile: async (filePath) => {
         const transcript = await this.transcribe(filePath);
         if (!transcript) {

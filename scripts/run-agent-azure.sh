@@ -13,7 +13,7 @@ PULSE_LOG="${PULSE_LOG:-/tmp/retaildaddy-pulseaudio.log}"
 PULSE_MIC_SINK_NAME="${PULSE_MIC_SINK_NAME:-retaildaddy_agent_mic_sink}"
 PULSE_MIC_SOURCE_NAME="${PULSE_MIC_SOURCE_NAME:-retaildaddy_agent_virtual_mic}"
 PULSE_MEET_SINK_NAME="${PULSE_MEET_SINK_NAME:-retaildaddy_meet_speaker_sink}"
-AUDIO_SEGMENT_SECONDS="${AUDIO_SEGMENT_SECONDS:-4}"
+AUDIO_SEGMENT_SECONDS="${AUDIO_SEGMENT_SECONDS:-2}"
 
 log() {
   printf '%s %s\n' "$LOG_PREFIX" "$*"
@@ -187,14 +187,25 @@ start_pulseaudio() {
 
   pactl set-default-sink "$PULSE_MEET_SINK_NAME"
   pactl set-default-source "$PULSE_MIC_SOURCE_NAME"
+  export PULSE_SINK="$PULSE_MEET_SINK_NAME"
   export PULSE_SOURCE="$PULSE_MIC_SOURCE_NAME"
-  export AUDIO_PLAY_COMMAND="${AUDIO_PLAY_COMMAND:-env PULSE_SINK=$PULSE_MIC_SINK_NAME ffplay -nodisp -autoexit -loglevel quiet}"
+  if [[ -z "${AUDIO_PLAY_COMMAND:-}" ]]; then
+    if command -v paplay >/dev/null 2>&1; then
+      export AUDIO_PLAY_COMMAND="paplay --device=$PULSE_MIC_SINK_NAME"
+    else
+      export AUDIO_PLAY_COMMAND="env PULSE_SINK=$PULSE_MIC_SINK_NAME ffplay -nodisp -autoexit -loglevel quiet"
+    fi
+  fi
   export AUDIO_AUTO_LISTEN="${AUDIO_AUTO_LISTEN:-true}"
+  export AUDIO_INBOX_POLL_MS="${AUDIO_INBOX_POLL_MS:-250}"
+  export AUDIO_INBOX_STABLE_POLLS="${AUDIO_INBOX_STABLE_POLLS:-1}"
+  export MEET_REQUIRE_REMOTE_UNMUTED="${MEET_REQUIRE_REMOTE_UNMUTED:-true}"
   export AUDIO_CAPTURE_COMMAND="${AUDIO_CAPTURE_COMMAND:-ffmpeg -hide_banner -nostdin -f pulse -i $PULSE_MEET_SINK_NAME.monitor -ac 1 -ar 16000 -f segment -segment_time $AUDIO_SEGMENT_SECONDS -reset_timestamps 1 \$AUDIO_INPUT_DIR/question-%04d.wav}"
   log "Chrome speaker sink: '$PULSE_MEET_SINK_NAME'."
   log "Chrome microphone source: '$PULSE_MIC_SOURCE_NAME'."
   log "TTS playback command sends audio into '$PULSE_MIC_SINK_NAME'."
   log "STT capture command records from '$PULSE_MEET_SINK_NAME.monitor'."
+  log "Audio latency defaults: segment=${AUDIO_SEGMENT_SECONDS}s poll=${AUDIO_INBOX_POLL_MS}ms stable_polls=${AUDIO_INBOX_STABLE_POLLS}."
 }
 
 validate_environment() {
