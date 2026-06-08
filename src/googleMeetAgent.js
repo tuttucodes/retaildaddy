@@ -547,30 +547,6 @@ export class GoogleMeetAgent {
   }
 
   async dismissMeetNotice() {
-    const notices = [
-      this.meetPage.getByRole("button", { name: /^got it$/i }).first(),
-      this.meetPage.getByRole("button", { name: /^continue$/i }).first(),
-      this.meetPage.getByRole("button", { name: /^dismiss$/i }).first(),
-      this.meetPage.getByRole("button", { name: /^ok$/i }).first(),
-      this.meetPage.locator("button").filter({ hasText: /^Got it$/i }).first(),
-      this.meetPage.locator("button").filter({ hasText: /^Continue$/i }).first(),
-      this.meetPage.locator("button").filter({ hasText: /^Dismiss$/i }).first(),
-      this.meetPage.locator("button").filter({ hasText: /^OK$/i }).first()
-    ];
-
-    for (const notice of notices) {
-      try {
-        if (await notice.isVisible({ timeout: 250 })) {
-          await notice.click({ timeout: 1000 });
-          this.logger.info("Dismissed Meet notice dialog.");
-          await this.meetPage.waitForTimeout(500);
-          return true;
-        }
-      } catch {
-        // Try next notice variant.
-      }
-    }
-
     const clickTarget = await this.meetPage
       .evaluate(() => {
         const isVisible = (element) => {
@@ -614,6 +590,30 @@ export class GoogleMeetAgent {
       this.logger.info(`Dismissed Meet notice dialog through mouse fallback: ${clickTarget.label}.`);
       await this.meetPage.waitForTimeout(500);
       return true;
+    }
+
+    const notices = [
+      this.meetPage.getByRole("button", { name: /^got it$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^continue$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^dismiss$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^ok$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Got it$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Continue$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Dismiss$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^OK$/i }).first()
+    ];
+
+    for (const notice of notices) {
+      try {
+        if (await notice.isVisible({ timeout: 250 })) {
+          await notice.click({ timeout: 1000 });
+          this.logger.info("Dismissed Meet notice dialog.");
+          await this.meetPage.waitForTimeout(500);
+          return true;
+        }
+      } catch {
+        // Try next notice variant.
+      }
     }
 
     return false;
