@@ -125,11 +125,15 @@ async function main() {
     assertReady(config, config.browser.autoPresent ? "launch" : "demo");
     const orchestrator = new DemoOrchestrator({ config, logger });
     try {
-      await orchestrator.runScriptedDemo({ withMeet: true });
-      await orchestrator.operatorLoop({
-        listenAudio:
-          launchOptions.listenAudio || config.audio.autoListen || Boolean(config.audio.captureCommand)
-      });
+      const listenAudio =
+        launchOptions.listenAudio || config.audio.autoListen || Boolean(config.audio.captureCommand);
+
+      if (config.agent.waitForConfirmation) {
+        await orchestrator.runConfirmedLiveDemo({ listenAudio });
+      } else {
+        await orchestrator.runScriptedDemo({ withMeet: true });
+        await orchestrator.operatorLoop({ listenAudio });
+      }
     } finally {
       await orchestrator.close();
     }

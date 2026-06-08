@@ -31,6 +31,17 @@ export class DemoOrchestrator {
     this.questionQueue = Promise.resolve();
   }
 
+  isDemoStartConfirmation(transcript) {
+    const normalized = String(transcript || "").trim();
+    if (!normalized) return false;
+
+    try {
+      return new RegExp(this.config.agent.confirmationPattern, "iu").test(normalized);
+    } catch {
+      return /start demo|start presenting|go ahead|you can start|do it/i.test(normalized);
+    }
+  }
+
   async speak(text, label = "speech") {
     requireSarvamKey(this.config);
     this.logger.info(`Speaking: ${text.slice(0, 90)}${text.length > 90 ? "..." : ""}`);
@@ -77,14 +88,14 @@ export class DemoOrchestrator {
     return this.questionQueue;
   }
 
-  async runScriptedDemo({ withMeet = false } = {}) {
+  async prepareDemoSession({ withMeet = false, autoPresent } = {}) {
     requireSarvamKey(this.config);
     let productPage;
 
     if (withMeet) {
       await this.meetAgent.launch();
       productPage = await this.meetAgent.openProduct();
-      await this.meetAgent.joinMeet();
+      await this.meetAgent.joinMeet({ autoPresent });
     } else {
       await this.meetAgent.launch();
       productPage = await this.meetAgent.openProduct();
@@ -96,6 +107,15 @@ export class DemoOrchestrator {
       logger: this.logger
     });
 
+    return productPage;
+  }
+
+  async runPreparedScriptedDemo() {
+    if (!this.demoController) {
+      throw new Error("Demo session is not prepared. Call prepareDemoSession first.");
+    }
+
+    const productPage = this.demoController.page;
     await productPage.bringToFront();
     await this.speak(this.script.opening, "opening");
 
@@ -108,14 +128,19 @@ export class DemoOrchestrator {
     this.logger.info("Scripted demo complete. Browser remains open until you stop the process.");
   }
 
-  startAudioQuestionWatcher({ signal } = {}) {
-    const watcher = this.listenForAudioQuestions({ signal }).catch((error) => {
+  async runScriptedDemo({ withMeet = false } = {}) {
+    await this.prepareDemoSession({ withMeet });
+    await this.runPreparedScriptedDemo();
+  }
+
+  startAudioQuestionWatcher({ signal, onTranscript } = {}) {
+    const watcher = this.listenForAudioQuestions({ signal, onTranscript }).catch((error) => {
       this.logger.error(`Audio question watcher stopped: ${error.message}`);
     });
     return watcher;
   }
 
-  async listenForAudioQuestions({ signal } = {}) {
+  async listenForAudioQuestions({ signal, onTranscript } = {}) {
     requireSarvamKey(this.config);
     await watchAudioInbox({
       inputDir: this.config.paths.audioInputDir,
@@ -127,9 +152,111 @@ export class DemoOrchestrator {
           this.logger.warn(`No transcript for ${filePath}`);
           return;
         }
-        await this.answerQuestion(transcript);
+        this.logger.info(`Transcript: ${transcript}`);
+        if (onTranscript) {
+          await onTranscript(transcript, filePath);
+        } else {
+          await this.answerQuestion(transcript);
+        }
       }
     });
+  }
+
+  startLiveAudioController({ onTranscript } = {}) {
+    const abortController = new AbortController();
+    const capture = startAudioCapture({
+      captureCommand: this.config.audio.captureCommand,
+      inputDir: this.config.paths.audioInputDir,
+      logger: this.logger
+    });
+    const watcher = this.startAudioQuestionWatcher({
+      signal: abortController.signal,
+      onTranscript
+    });
+
+    return {
+      capture,
+      watcher,
+      stop: async () => {
+        abortController.abort();
+        if (capture?.enabled) {
+          await capture.stop();
+        }
+        await watcher.catch(() => {});
+      }
+    };
+  }
+
+  async runConfirmedLiveDemo({ listenAudio = true } = {}) {
+    requireSarvamKey(this.config);
+    await this.prepareDemoSession({ withMeet: true, autoPresent: false });
+
+    let confirmed = false;
+    let resolveConfirmation;
+    const confirmation = new Promise((resolve) => {
+      resolveConfirmation = resolve;
+    });
+
+    let liveAudio = null;
+    if (listenAudio) {
+      this.logger.info(
+        "Standby mode active. The agent will listen silently and wait for explicit confirmation before presenting or speaking."
+      );
+      liveAudio = this.startLiveAudioController({
+        onTranscript: async (transcript) => {
+          if (!confirmed) {
+            if (this.isDemoStartConfirmation(transcript)) {
+              confirmed = true;
+              this.logger.info(`Demo confirmation received: ${transcript}`);
+              resolveConfirmation(transcript);
+            } else {
+              this.logger.info(`Heard before confirmation; staying silent: ${transcript}`);
+            }
+            return;
+          }
+
+          await this.answerQuestion(transcript);
+        }
+      });
+    } else if (process.stdin.isTTY) {
+      this.logger.info("Type 'start demo' and press Enter to begin presenting.");
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      for (;;) {
+        const line = await rl.question("confirm> ");
+        if (this.isDemoStartConfirmation(line)) {
+          confirmed = true;
+          rl.close();
+          resolveConfirmation(line);
+          break;
+        }
+      }
+    } else {
+      throw new Error(
+        "Confirmation mode requires audio listening or an interactive TTY. Set MEET_WAIT_FOR_CONFIRMATION=false to auto-start."
+      );
+    }
+
+    try {
+      await confirmation;
+      if (this.config.browser.autoPresent) {
+        await this.meetAgent.tryStartPresenting();
+      }
+      await this.runPreparedScriptedDemo();
+
+      if (listenAudio) {
+        this.logger.info("Demo complete. Continuing to listen for client questions until stopped.");
+        await this.waitForShutdownSignal();
+      } else {
+        await this.operatorLoop({ listenAudio: false });
+      }
+    } finally {
+      if (liveAudio) {
+        await liveAudio.stop();
+      }
+    }
   }
 
   async interactiveQa() {

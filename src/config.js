@@ -68,7 +68,11 @@ export function loadConfig() {
     },
     agent: {
       name: process.env.AGENT_NAME || "RetailDaddy AI Demo Agent",
-      discloseAi: boolFromEnv("DISCLOSE_AI", true)
+      discloseAi: boolFromEnv("DISCLOSE_AI", true),
+      waitForConfirmation: boolFromEnv("MEET_WAIT_FOR_CONFIRMATION", true),
+      confirmationPattern:
+        process.env.DEMO_CONFIRMATION_PATTERN ||
+        "start demo|start presenting|start now|begin demo|go ahead|you can start|yes.*start|okay.*start|ok.*start|do it|demo തുടങ്ങ|തുടങ്ങാം|തുടങ്ങു|ആരംഭിക്ക|കാണിക്കൂ"
     },
     paths: {
       demoScript: resolveProjectPath(process.env.DEMO_SCRIPT_PATH || "demo/demo-script.example.json"),

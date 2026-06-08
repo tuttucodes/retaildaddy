@@ -83,7 +83,7 @@ export class GoogleMeetAgent {
     this.logger.info("Google sign-in browser is open. Complete login manually, then close the window.");
   }
 
-  async joinMeet() {
+  async joinMeet({ autoPresent = this.config.browser.autoPresent } = {}) {
     if (!this.config.browser.meetUrl) {
       throw new Error("GOOGLE_MEET_URL is required for Meet mode.");
     }
@@ -104,7 +104,7 @@ export class GoogleMeetAgent {
 
     await this.ensureMicrophoneUnmuted();
 
-    if (this.config.browser.autoPresent) {
+    if (autoPresent) {
       await this.tryStartPresenting();
     } else {
       this.logger.warn(
@@ -441,15 +441,32 @@ export class GoogleMeetAgent {
   }
 
   async choosePresentationSourceType() {
-    const candidates = [
-      this.meetPage.getByText(/a tab|chrome tab|browser tab/i).first(),
-      this.meetPage.getByText(/window/i).first(),
-      this.meetPage.getByText(/entire screen|your entire screen/i).first()
+    const sourcePrefersScreen = /entire screen|screen 1|screen/i.test(
+      this.config.browser.desktopCaptureSource || ""
+    );
+    const screenCandidates = [
+      this.meetPage.getByText(/entire screen|your entire screen/i).first(),
+      this.meetPage.locator("[role='menuitem'], [role='option'], button").filter({ hasText: /screen/i }).first()
     ];
+    const tabCandidates = [
+      this.meetPage.getByText(/a tab|chrome tab|browser tab/i).first(),
+      this.meetPage.locator("[role='menuitem'], [role='option'], button").filter({ hasText: /tab/i }).first()
+    ];
+    const windowCandidates = [
+      this.meetPage.getByText(/window/i).first(),
+      this.meetPage.locator("[role='menuitem'], [role='option'], button").filter({ hasText: /window/i }).first()
+    ];
+
+    const candidates = sourcePrefersScreen
+      ? [...screenCandidates, ...tabCandidates, ...windowCandidates]
+      : [...tabCandidates, ...windowCandidates, ...screenCandidates];
 
     for (const candidate of candidates) {
       try {
         await candidate.click({ timeout: 3500 });
+        this.logger.info(
+          `Selected Meet presentation source type for '${this.config.browser.desktopCaptureSource}'.`
+        );
         return;
       } catch {
         // Browser and Meet versions expose this differently.
