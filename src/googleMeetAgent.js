@@ -571,7 +571,7 @@ export class GoogleMeetAgent {
       }
     }
 
-    const clickedLabel = await this.meetPage
+    const clickTarget = await this.meetPage
       .evaluate(() => {
         const isVisible = (element) => {
           const style = window.getComputedStyle(element);
@@ -597,16 +597,21 @@ export class GoogleMeetAgent {
             .replace(/\s+/g, " ")
             .trim();
           if (isVisible(button) && allowedLabels.has(label.toLowerCase())) {
-            button.click();
-            return label;
+            const rect = button.getBoundingClientRect();
+            return {
+              label,
+              x: rect.left + rect.width / 2,
+              y: rect.top + rect.height / 2
+            };
           }
         }
-        return "";
+        return null;
       })
-      .catch(() => "");
+      .catch(() => null);
 
-    if (clickedLabel) {
-      this.logger.info(`Dismissed Meet notice dialog through DOM fallback: ${clickedLabel}.`);
+    if (clickTarget) {
+      await this.meetPage.mouse.click(clickTarget.x, clickTarget.y);
+      this.logger.info(`Dismissed Meet notice dialog through mouse fallback: ${clickTarget.label}.`);
       await this.meetPage.waitForTimeout(500);
       return true;
     }
