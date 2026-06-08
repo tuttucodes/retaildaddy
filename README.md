@@ -7,6 +7,7 @@ This project implements an AI sales-demo agent that can:
 - transcribe client questions from live audio chunks through Sarvam Speech to Text
 - answer questions with Sarvam chat completions and your product knowledge file
 - control a separate browser tab for your SaaS product, including click/fill/wait/zoom/highlight steps
+- run a Sarvam-powered AI calling agent with text/audio call turns, voice replies, summaries, and webhook-friendly APIs
 
 The agent identifies itself as an AI assistant by default. Keep that enabled for client calls.
 
@@ -47,6 +48,13 @@ Check readiness:
 ```bash
 npm run agent -- doctor launch
 ```
+
+## Run
+
+- **Voice Call Agent:** `npm run dial -- +91XXXXXXXXXX "Name"`
+- **Meet Demo Agent:** `GOOGLE_MEET_URL="<link>" npm run launch`
+
+See [docs/DEPLOY.md](docs/DEPLOY.md) for the full two-box runbook and fallback verification.
 
 ## Run A Rehearsal
 
@@ -139,6 +147,63 @@ npm run agent -- tts "text"
 npm run agent -- listen-audio
 ```
 
+## Run The Calling Agent
+
+This is the Omnidimension-style path in this repo: Sarvam handles STT, LLM, TTS, and post-call
+analysis, while this app provides call sessions and webhook-style endpoints. Add Exotel, Twilio,
+WhatsApp Business Calling, or another telephony layer in front of these endpoints for real phone
+numbers.
+
+```bash
+npm run calling-agent
+```
+
+Open `http://localhost:4180` to use the browser call simulator. It can start a call, send typed
+caller turns, record microphone audio, play Sarvam voice responses, and generate a CRM handoff
+summary.
+
+To make the agent call a real phone number with Twilio, set:
+
+```bash
+CALL_PUBLIC_BASE_URL=https://your-public-callback-url.example.com
+CALL_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+# or use API key auth:
+TWILIO_API_KEY_SID=...
+TWILIO_API_KEY_SECRET=...
+TWILIO_FROM_NUMBER=+1...
+```
+
+`CALL_PUBLIC_BASE_URL` must be a public HTTPS URL that reaches this server because Twilio has to
+POST to `/twilio/voice`, `/twilio/recording`, and `/twilio/status`. A localhost URL will not work
+unless you expose it through a tunnel or deploy the server.
+
+Then dial a phone number:
+
+```bash
+npm run dial -- +919074417293 "Rahul"
+```
+
+If the calling-agent server is already running, this command uses it. If not, it starts the server,
+places the call, and keeps running so Twilio can send recording callbacks back to the Sarvam agent.
+
+Core endpoints:
+
+```bash
+POST /api/calls                 # create inbound/outbound call session
+POST /api/outbound-call         # place a real outbound Twilio call
+POST /api/calls/:id/text        # send caller text, receive answer + TTS audio URL
+POST /api/calls/:id/audio       # send caller audio blob, receive transcript + answer + audio URL
+POST /api/calls/:id/summary     # generate call summary
+POST /api/calls/:id/end         # close call session
+GET  /api/calls/:id             # inspect public call state
+GET  /audio/:file               # play generated TTS audio
+POST /twilio/voice              # Twilio webhook: initial prompt + record
+POST /twilio/recording          # Twilio webhook: recording -> Sarvam -> next prompt
+POST /twilio/status             # Twilio webhook: call status updates
+```
+
 ## Sarvam API Notes
 
 This scaffold uses current Sarvam REST endpoints:
@@ -146,5 +211,6 @@ This scaffold uses current Sarvam REST endpoints:
 - STT: `POST https://api.sarvam.ai/speech-to-text` with `api-subscription-key`
 - TTS stream: `POST https://api.sarvam.ai/text-to-speech/stream` with `api-subscription-key`
 - Chat: `POST https://api.sarvam.ai/v1/chat/completions` with `api-subscription-key`
+- Call analytics: `POST https://api.sarvam.ai/call-analytics` with `api-subscription-key`
 
 The Sarvam docs checked on 2026-06-08 show STT model options including `saarika:v2.5` and `saaras:v3`, TTS model options including `bulbul:v2` and `bulbul:v3`, and chat models including `sarvam-30b` and `sarvam-105b`.
