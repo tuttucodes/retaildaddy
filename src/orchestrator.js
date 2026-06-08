@@ -135,16 +135,30 @@ export class DemoOrchestrator {
     const languageCode = this.config.agent.multilingual
       ? detectSarvamTtsLanguageCode(text, "en-IN")
       : this.config.sarvam.ttsLanguageCode;
-    await this.sarvamClient.textToSpeechStream(text, audioPath, {
-      model: this.config.sarvam.ttsModel,
-      languageCode,
-      speaker: this.config.sarvam.ttsSpeaker,
-      pace: this.config.sarvam.ttsPace
-    });
+
+    // Register barge-in BEFORE the TTS call so that any user speech arriving
+    // during the 1-3 s TTS download is correctly treated as barge-in instead
+    // of a new question (isSpeaking must be true from this point forward).
     const controller = new AbortController();
     this.bargeIn.beginSpeaking(controller);
+
     try {
+      await this.sarvamClient.textToSpeechStream(text, audioPath, {
+        model: this.config.sarvam.ttsModel,
+        languageCode,
+        speaker: this.config.sarvam.ttsSpeaker,
+        pace: this.config.sarvam.ttsPace,
+        signal: controller.signal
+      });
+
+      // If barge-in fired while TTS was downloading, skip playback entirely.
+      if (controller.signal.aborted) return audioPath;
+
       await this.playWithSignal(audioPath, controller.signal);
+    } catch (error) {
+      // An AbortError means barge-in cancelled the TTS request or playback.
+      // This is intentional — treat it as a clean early exit, not an error.
+      if (error?.name !== "AbortError") throw error;
     } finally {
       this.bargeIn.endSpeaking();
     }

@@ -281,4 +281,20 @@ describe("calling agent demo booking", () => {
     await agent.maybeBookDemo(session, "rahul at gmail dot com");
     assert.equal(session.demo, undefined);
   });
+
+  it("does not book when transferRequested is true even if nextAction is schedule_demo and email is present", async () => {
+    let createMeetCalls = 0;
+    const agent = makeAgent({
+      createMeetEvent: async ({ attendeeEmail }) => {
+        createMeetCalls += 1;
+        return { meetUrl: "https://meet.google.com/xyz", eventId: "e2", startIso: "now" };
+      }
+    });
+    const session = agent.createSession({ callerName: "Priya" });
+    session.transferRequested = true;
+    session.nextAction = "schedule_demo";
+    await agent.maybeBookDemo(session, "my email is priya at gmail dot com");
+    assert.equal(createMeetCalls, 0);
+    assert.equal(session.demo, undefined);
+  });
 });

@@ -13,7 +13,9 @@ describe("buildMeetEventPayload", () => {
     });
     assert.equal(payload.summary, "RetailDaddy demo with Rahul");
     assert.equal(payload.start.dateTime, startIso);
+    assert.equal(payload.start.timeZone, "Asia/Kolkata");
     assert.equal(payload.end.dateTime, "2026-06-10T10:30:00.000Z");
+    assert.equal(payload.end.timeZone, "Asia/Kolkata");
     assert.deepEqual(payload.attendees, [{ email: "rahul@gmail.com" }]);
     assert.ok(payload.conferenceData.createRequest.conferenceSolutionKey.type === "hangoutsMeet");
     assert.ok(payload.conferenceData.createRequest.requestId.length > 0);

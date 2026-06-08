@@ -21,14 +21,17 @@ export class SarvamClient {
     this.retryDelayMs = retryDelayMs;
   }
 
-  async requestWithRetries(label, buildRequest, { maxRetries = this.maxRetries } = {}) {
+  async requestWithRetries(label, buildRequest, { maxRetries = this.maxRetries, signal } = {}) {
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       let response;
       try {
         const { url, init } = buildRequest();
-        response = await this.fetchImpl(url, init);
+        // Merge the optional abort signal into the fetch init so in-flight
+        // requests are cancelled immediately when the caller aborts.
+        const fetchInit = signal ? { ...init, signal } : init;
+        response = await this.fetchImpl(url, fetchInit);
       } catch (error) {
         lastError = error;
         if (!isRetryableFetchError(error) || attempt === maxRetries) {
@@ -104,21 +107,53 @@ export class SarvamClient {
       temperature: options.temperature ?? 0.6
     };
 
-    const response = await this.requestWithRetries("Sarvam TTS stream", () => ({
-      url: `${SARVAM_BASE_URL}/text-to-speech/stream`,
-      init: {
-        method: "POST",
-        headers: {
-          "api-subscription-key": this.apiKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      }
-    }));
+    const response = await this.requestWithRetries(
+      "Sarvam TTS stream",
+      () => ({
+        url: `${SARVAM_BASE_URL}/text-to-speech/stream`,
+        init: {
+          method: "POST",
+          headers: {
+            "api-subscription-key": this.apiKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        }
+      }),
+      { signal: options.signal }
+    );
     const bytes = Buffer.from(await response.arrayBuffer());
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, bytes);
     return outputPath;
+  }
+
+  async analyzeCallFile(filePath, questions, options = {}) {
+    const absolutePath = path.resolve(filePath);
+    const fileBuffer = fs.readFileSync(absolutePath);
+    const fileName = path.basename(absolutePath);
+    const questionList = Array.isArray(questions) ? questions : [];
+
+    const response = await this.requestWithRetries("Sarvam call analytics", () => {
+      const formData = new FormData();
+      formData.set("file", new Blob([fileBuffer]), fileName);
+      formData.set("questions", JSON.stringify(questionList));
+      if (options.hotwords) formData.set("hotwords", String(options.hotwords));
+      if (options.model) formData.set("model", String(options.model));
+
+      return {
+        url: `${SARVAM_BASE_URL}/call-analytics`,
+        init: {
+          method: "POST",
+          headers: {
+            "api-subscription-key": this.apiKey
+          },
+          body: formData
+        }
+      };
+    });
+
+    return response.json();
   }
 
   async chat(messages, options = {}) {

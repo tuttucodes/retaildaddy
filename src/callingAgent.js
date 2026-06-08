@@ -289,6 +289,7 @@ export class CallingAgent {
   }
 
   async maybeBookDemo(session, transcript) {
+    if (session.transferRequested) return;
     if (!this.config.booking?.emailLink) return;
     if (session.demo?.meetUrl) return;
     if (session.nextAction !== "schedule_demo" && session.interest !== "demo") return;

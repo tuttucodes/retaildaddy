@@ -6,15 +6,15 @@ import { withRetry } from "../util/retry.js";
 
 /**
  * Pure builder for a Google Calendar event that requests a Meet link.
- * @param {{summary: string, attendeeEmail?: string, startIso: string, durationMinutes?: number}} input
+ * @param {{summary: string, attendeeEmail?: string, startIso: string, durationMinutes?: number, timeZone?: string}} input
  */
-export function buildMeetEventPayload({ summary, attendeeEmail, startIso, durationMinutes = 30 }) {
+export function buildMeetEventPayload({ summary, attendeeEmail, startIso, durationMinutes = 30, timeZone = "Asia/Kolkata" }) {
   if (!attendeeEmail) throw new Error("attendeeEmail is required");
   const end = new Date(new Date(startIso).getTime() + durationMinutes * 60_000).toISOString();
   return {
     summary,
-    start: { dateTime: startIso },
-    end: { dateTime: end },
+    start: { dateTime: startIso, timeZone },
+    end: { dateTime: end, timeZone },
     attendees: [{ email: attendeeEmail }],
     conferenceData: {
       createRequest: {
@@ -30,10 +30,11 @@ export function buildMeetEventPayload({ summary, attendeeEmail, startIso, durati
  * @param {{booking: object, summary: string, attendeeEmail: string, startIso: string, durationMinutes?: number, logger?: object}} args
  * @returns {Promise<{meetUrl: string, eventId: string, startIso: string}>}
  */
-export async function createMeetEvent({ booking, summary, attendeeEmail, startIso, durationMinutes = 30, logger }) {
+export async function createMeetEvent({ booking, summary, attendeeEmail, startIso, durationMinutes = 30, timeZone, logger }) {
   const auth = createGoogleAuth(booking);
   const calendar = google.calendar({ version: "v3", auth });
-  const requestBody = buildMeetEventPayload({ summary, attendeeEmail, startIso, durationMinutes });
+  const resolvedTimeZone = timeZone ?? booking.timeZone ?? "Asia/Kolkata";
+  const requestBody = buildMeetEventPayload({ summary, attendeeEmail, startIso, durationMinutes, timeZone: resolvedTimeZone });
 
   const response = await withRetry(
     () => calendar.events.insert({
