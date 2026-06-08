@@ -283,6 +283,34 @@ export class DemoOrchestrator {
     return watcher;
   }
 
+  startMeetCaptionWatcher({ signal, onTranscript } = {}) {
+    if (!this.config.audio.captionListen || !this.meetAgent?.meetPage) {
+      return null;
+    }
+
+    const watcher = this.listenForMeetCaptions({ signal, onTranscript }).catch((error) => {
+      this.logger.error(`Meet caption watcher stopped: ${error.message}`);
+    });
+    return watcher;
+  }
+
+  async listenForMeetCaptions({ signal, onTranscript } = {}) {
+    const enabled = await this.meetAgent.enableCaptions();
+    if (!enabled) return;
+
+    this.logger.info("Watching Google Meet captions for fallback live input.");
+    let lastCaption = "";
+    while (!signal?.aborted) {
+      const caption = await this.meetAgent.getLatestCaptionText();
+      if (caption && caption !== lastCaption) {
+        lastCaption = caption;
+        await this.handleLiveTranscript(caption, "meet-captions", { onTranscript });
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.config.audio.captionPollMs));
+    }
+    this.logger.info("Stopped watching Google Meet captions.");
+  }
+
   async shouldAcceptMeetAudioFile(filePath) {
     if (!this.config.audio.requireRemoteUnmuted || !this.meetAgent?.meetPage) {
       return true;
@@ -332,6 +360,10 @@ export class DemoOrchestrator {
       signal: abortController.signal,
       onTranscript
     });
+    const captionWatcher = this.startMeetCaptionWatcher({
+      signal: abortController.signal,
+      onTranscript
+    });
 
     return {
       capture,
@@ -342,6 +374,7 @@ export class DemoOrchestrator {
           await capture.stop();
         }
         await watcher.catch(() => {});
+        await captionWatcher?.catch(() => {});
       }
     };
   }
@@ -357,6 +390,7 @@ export class DemoOrchestrator {
     });
 
     let liveAudio = null;
+    let acknowledgedStandby = false;
     if (listenAudio) {
       this.logger.info(
         "Standby mode active. The agent will listen silently and wait for explicit confirmation before presenting or speaking."
@@ -368,6 +402,13 @@ export class DemoOrchestrator {
               confirmed = true;
               this.logger.info(`Demo confirmation received: ${transcript}`);
               resolveConfirmation(transcript);
+            } else if (!acknowledgedStandby && /\b(hello|hi|hey|can you hear|are you listening)\b/i.test(transcript)) {
+              acknowledgedStandby = true;
+              this.logger.info(`Standby greeting received: ${transcript}`);
+              await this.speak(
+                "Hi, I can hear you. Say start demo when you want me to share screen and present RetailDaddy.",
+                "standby-ack"
+              );
             } else {
               this.logger.info(`Heard before confirmation; staying silent: ${transcript}`);
             }

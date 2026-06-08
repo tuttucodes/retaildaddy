@@ -494,6 +494,151 @@ export class GoogleMeetAgent {
     }, { selfNames });
   }
 
+  async enableCaptions() {
+    if (!this.meetPage || this.meetPage.isClosed()) return false;
+
+    await this.revealMeetControls();
+    const alreadyEnabled = [
+      this.meetPage.getByRole("button", { name: /turn off captions/i }).first(),
+      this.meetPage.locator("button[aria-label*='Turn off captions' i]").first()
+    ];
+
+    for (const button of alreadyEnabled) {
+      if (await button.isVisible({ timeout: 500 }).catch(() => false)) {
+        this.logger.info("Meet captions are already enabled.");
+        return true;
+      }
+    }
+
+    const buttons = [
+      this.meetPage.getByRole("button", { name: /turn on captions/i }).first(),
+      this.meetPage.getByRole("button", { name: /captions/i }).first(),
+      this.meetPage.locator("button[aria-label*='Turn on captions' i]").first(),
+      this.meetPage.locator("button[aria-label*='captions' i]").first()
+    ];
+
+    for (const button of buttons) {
+      try {
+        if (await button.isVisible({ timeout: 1000 })) {
+          await button.click({ timeout: 2000 });
+          this.logger.info("Enabled Meet captions for fallback listening.");
+          await this.meetPage.waitForTimeout(700);
+          return true;
+        }
+      } catch {
+        // Try next caption control variant.
+      }
+    }
+
+    const clicked = await this.meetPage
+      .evaluate(() => {
+        const isVisible = (element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
+        const candidate = Array.from(document.querySelectorAll("button,[role='button']")).find((button) => {
+          const label = [
+            button.getAttribute("aria-label"),
+            button.getAttribute("data-tooltip"),
+            button.getAttribute("title"),
+            button.textContent
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return isVisible(button) && /turn on captions|captions|closed_caption/i.test(label);
+        });
+        if (!candidate) return false;
+        candidate.click();
+        return true;
+      })
+      .catch(() => false);
+
+    if (clicked) {
+      this.logger.info("Enabled Meet captions through DOM fallback.");
+      await this.meetPage.waitForTimeout(700);
+      return true;
+    }
+
+    await this.saveMeetDiagnostics("captions-control-not-found");
+    this.logger.warn("Could not find the Meet captions control.");
+    return false;
+  }
+
+  async getLatestCaptionText() {
+    if (!this.meetPage || this.meetPage.isClosed()) return "";
+
+    const selfNames = [
+      this.config.browser.meetDisplayName,
+      this.config.agent?.name,
+      "Ai Agent",
+      "AI Agent"
+    ].filter(Boolean);
+
+    return this.meetPage
+      .evaluate(({ selfNames }) => {
+        const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+        const isVisible = (element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
+        const hasInteractiveAncestor = (element) =>
+          Boolean(element.closest("button,[role='button'],input,textarea,select,a"));
+        const stripSpeaker = (text) => {
+          let value = normalize(text);
+          for (const name of selfNames) {
+            const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            value = value.replace(new RegExp(`^${escaped}\\s*:?\\s*`, "i"), "").trim();
+          }
+          value = value.replace(/^[A-Z][A-Za-z ]{1,40}:\\s+/, "").trim();
+          return value;
+        };
+        const ignored = /^(meet|people\\d*|chat|meeting details|leave call|share screen|turn on camera|turn off microphone|turn on captions|turn off captions|backgrounds and effects|send a reaction|raise hand|more options|audio settings|video settings|this call is open to anyone|show in a tile|ai agent|rahul babu|kji-ouda-obi|\\d{1,2}:\\d{2}\\s*[AP]M)$/i;
+        const candidates = [];
+
+        for (const element of document.querySelectorAll("div,span,p")) {
+          if (!isVisible(element) || hasInteractiveAncestor(element)) continue;
+          const rect = element.getBoundingClientRect();
+          if (rect.top < window.innerHeight * 0.28 || rect.top > window.innerHeight - 90) continue;
+          let text = stripSpeaker(element.textContent);
+          if (!text || text.length > 260 || ignored.test(text)) continue;
+          const childWithSameText = Array.from(element.children || []).some(
+            (child) => normalize(child.textContent) === normalize(element.textContent)
+          );
+          if (childWithSameText) continue;
+          candidates.push({
+            text,
+            top: rect.top,
+            left: rect.left,
+            area: rect.width * rect.height
+          });
+        }
+
+        const unique = [];
+        const seen = new Set();
+        for (const candidate of candidates.sort((left, right) => right.top - left.top || right.area - left.area)) {
+          const key = candidate.text.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          unique.push(candidate);
+        }
+
+        return unique[0]?.text || "";
+      }, { selfNames })
+      .catch(() => "");
+  }
+
   async waitForMeetRoom({ timeoutMs = 60000, quiet = false } = {}) {
     const markers = [
       this.meetPage.getByRole("button", { name: /leave call|leave/i }).first(),

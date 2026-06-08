@@ -103,6 +103,8 @@ export function loadConfig() {
       captureCommand: process.env.AUDIO_CAPTURE_COMMAND || "",
       autoListen: boolFromEnv("AUDIO_AUTO_LISTEN", false),
       browserPlayback: boolFromEnv("BROWSER_AUDIO_PLAYBACK", false),
+      captionListen: boolFromEnv("MEET_CAPTION_LISTEN", false),
+      captionPollMs: numberFromEnv("MEET_CAPTION_POLL_MS", 700),
       inboxPollMs: numberFromEnv("AUDIO_INBOX_POLL_MS", 250),
       inboxStablePolls: numberFromEnv("AUDIO_INBOX_STABLE_POLLS", 1),
       minBytes: numberFromEnv("AUDIO_MIN_BYTES", 24000),
