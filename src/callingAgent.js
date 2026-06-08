@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { createAudioFilePath } from "./audioPlayer.js";
 import { buildPersonaPrompt } from "./persona/asha.js";
+import { createMeetEvent as defaultCreateMeetEvent } from "./booking/calendarLink.js";
+import { normalizeSpokenEmail } from "./booking/emailCapture.js";
 
 const TRANSFER_RE = /\b(human|person|agent|manager|transfer|call me|callback|representative)\b/i;
 const DEMO_RE = /\b(demo|meeting|schedule|appointment|book|trial|walkthrough|show)\b|ഡെമോ|കാണിക്ക|ശോ/u;
@@ -92,7 +94,7 @@ function publicSession(session) {
 }
 
 export class CallingAgent {
-  constructor({ sarvamClient, config, script, productKnowledge, logger }) {
+  constructor({ sarvamClient, config, script, productKnowledge, logger, createMeetEvent } = {}) {
     this.sarvamClient = sarvamClient;
     this.config = config;
     this.script = script;
@@ -100,6 +102,7 @@ export class CallingAgent {
     this.logger = logger;
     this.sessions = new Map();
     this.audioOutDir = config.paths.audioOutDir;
+    this.createMeetEvent = createMeetEvent || defaultCreateMeetEvent;
     this.systemPrompt = buildCallingAgentSystemPrompt({
       agentName: config.calling?.agentName || config.agent.name || "RetailDaddy AI Calling Agent",
       personaName: config.calling?.personaName || "Asha",
@@ -191,6 +194,7 @@ export class CallingAgent {
     if (!transcript) throw new Error("text is required");
 
     this.updateCallState(session, transcript);
+    await this.maybeBookDemo(session, transcript);
     session.transcript.push({
       role: "caller",
       source,
@@ -282,6 +286,37 @@ export class CallingAgent {
       audioUrl,
       languageCode
     };
+  }
+
+  async maybeBookDemo(session, transcript) {
+    if (!this.config.booking?.emailLink) return;
+    if (session.demo?.meetUrl) return;
+    if (session.nextAction !== "schedule_demo" && session.interest !== "demo") return;
+
+    // Strip common spoken preambles ("my email is", "it is", "email address is", etc.)
+    // so that normalizeSpokenEmail receives only the email portion.
+    const stripped = transcript.replace(/^.*?\b(?:email\s+(?:address\s+)?is|email\s+id\s+is|address\s+is|it\s+is|is)\s+/i, "");
+    const email = normalizeSpokenEmail(stripped) || normalizeSpokenEmail(transcript);
+    if (!email) return;
+
+    try {
+      const startIso = new Date(Date.now() + 2 * 60_000).toISOString();
+      const result = await this.createMeetEvent({
+        booking: this.config.booking,
+        summary: `RetailDaddy demo with ${firstName(session)}`,
+        attendeeEmail: email,
+        startIso,
+        durationMinutes: 30,
+        logger: this.logger
+      });
+      session.demo = { email, ...result };
+      session.nextAction = "demo_booked";
+      this.logger.info(`Demo booked for ${email}: ${result.meetUrl}`);
+    } catch (error) {
+      this.logger.error(`Demo booking failed for ${email}: ${error.message}`);
+      session.demo = { email, error: error.message };
+      session.nextAction = "demo_booking_failed";
+    }
   }
 
   updateCallState(session, text) {

@@ -242,3 +242,43 @@ describe("calling agent human persona", () => {
     assert.match(answer, /demo|RetailDaddy/i);
   });
 });
+
+describe("calling agent demo booking", () => {
+  function makeAgent(overrides = {}) {
+    const fakeSarvam = { chat: async () => "Sure.", textToSpeechStream: async (_t, p) => p, transcribeFile: async () => ({ transcript: "" }) };
+    return new CallingAgent({
+      sarvamClient: fakeSarvam,
+      config: {
+        sarvam: { ttsModel: "bulbul:v3", ttsSpeaker: "anushka", ttsSampleRate: 8000, ttsPace: 1.08, ttsLanguageCode: "ml-IN" },
+        calling: { personaName: "Asha", multilingual: true, ttsSpeaker: "anushka" },
+        agent: { discloseAi: false, name: "RetailDaddy" },
+        booking: { emailLink: true, googleEmail: "agent@x.com" },
+        paths: { audioOutDir: "/tmp" }
+      },
+      script: { title: "d", steps: [] }, productKnowledge: "", logger: { info() {}, warn() {}, error() {} },
+      createMeetEvent: overrides.createMeetEvent
+    });
+  }
+
+  it("captures a spoken email and books a Meet link when email-link is enabled", async () => {
+    let booked = null;
+    const agent = makeAgent({
+      createMeetEvent: async ({ attendeeEmail }) => { booked = attendeeEmail; return { meetUrl: "https://meet.google.com/abc", eventId: "e1", startIso: "now" }; }
+    });
+    const session = agent.createSession({ callerName: "Rahul", direction: "outbound" });
+    session.nextAction = "schedule_demo";
+    await agent.maybeBookDemo(session, "my email is rahul at gmail dot com");
+    assert.equal(booked, "rahul@gmail.com");
+    assert.equal(session.demo.meetUrl, "https://meet.google.com/abc");
+    assert.equal(session.demo.email, "rahul@gmail.com");
+  });
+
+  it("does nothing when email-link is disabled", async () => {
+    const agent = makeAgent();
+    agent.config.booking.emailLink = false;
+    const session = agent.createSession({ callerName: "Rahul" });
+    session.nextAction = "schedule_demo";
+    await agent.maybeBookDemo(session, "rahul at gmail dot com");
+    assert.equal(session.demo, undefined);
+  });
+});
