@@ -102,6 +102,8 @@ export class GoogleMeetAgent {
       );
     }
 
+    await this.ensureMicrophoneUnmuted();
+
     if (this.config.browser.autoPresent) {
       await this.tryStartPresenting();
     } else {
@@ -207,10 +209,7 @@ export class GoogleMeetAgent {
 
   async dismissPrejoinToggles() {
     const labels = [
-      /turn off microphone/i,
-      /turn off camera/i,
-      /microphone/i,
-      /camera/i
+      /turn off camera/i
     ];
 
     for (const label of labels) {
@@ -221,6 +220,30 @@ export class GoogleMeetAgent {
         // Google Meet labels vary by account, locale, and state.
       }
     }
+  }
+
+  async ensureMicrophoneUnmuted() {
+    const buttons = [
+      this.meetPage.getByRole("button", { name: /turn on microphone/i }).first(),
+      this.meetPage.getByRole("button", { name: /unmute/i }).first(),
+      this.meetPage.getByRole("button", { name: /microphone.*off/i }).first(),
+      this.meetPage.locator("button[aria-label*='Turn on microphone' i]").first()
+    ];
+
+    for (const button of buttons) {
+      try {
+        if (await button.isVisible({ timeout: 2000 })) {
+          await button.click({ timeout: 3000 });
+          this.logger.info("Clicked Meet microphone unmute control.");
+          await this.meetPage.waitForTimeout(500);
+          return true;
+        }
+      } catch {
+        // Try next Meet label variant.
+      }
+    }
+
+    return false;
   }
 
   async fillDisplayNameIfNeeded() {

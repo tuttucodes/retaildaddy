@@ -66,7 +66,11 @@ export async function watchAudioInbox({ inputDir, onFile, logger, pollMs = 1500,
 
       pending.delete(file);
       seen.add(file);
-      await onFile(file);
+      try {
+        await onFile(file);
+      } catch (error) {
+        logger.warn(`Ignoring audio file ${path.basename(file)}: ${error.message}`);
+      }
     }
 
     await waitForNextPoll(pollMs, signal);
