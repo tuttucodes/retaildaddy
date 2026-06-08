@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   assertPreflightReady,
+  checkCallAgent,
+  checkMeetAgent,
   formatPreflightReport,
   getMissingSetupItems,
   getModeRequirements,
@@ -108,7 +110,7 @@ describe("preflight mode requirements", () => {
   it("warns but does not fail launch mode when audio capture is missing", () => {
     const config = validConfig({
       config: {
-        audio: { captureCommand: "" }
+        audio: { captureCommand: "", streamCommand: "" }
       }
     });
 
@@ -119,6 +121,22 @@ describe("preflight mode requirements", () => {
       result.warnings.map((preflightIssue) => preflightIssue.message).join("\n"),
       /automatic spoken client Q&A will be disabled/
     );
+  });
+
+  it("does not warn when streaming audio is configured for launch mode", () => {
+    const config = validConfig({
+      config: {
+        audio: {
+          captureCommand: "",
+          streamCommand: "ffmpeg -f s16le pipe:1"
+        }
+      }
+    });
+
+    const result = runPreflight(config, { mode: "launch" });
+
+    assert.equal(result.ready, true);
+    assert.deepEqual(result.warnings, []);
   });
 
   it("does not require launch-only config in demo mode", () => {
@@ -240,5 +258,31 @@ describe("preflight reporting", () => {
 
     assert.equal(result.ready, true);
     assert.equal(result.mode, "launch");
+  });
+});
+
+describe("preflight per-box readiness", () => {
+  it("flags missing call-agent env", () => {
+    const result = checkCallAgent({
+      sarvam: { apiKey: "" }, calling: { publicBaseUrl: "" },
+      booking: { emailLink: false }
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.missing.includes("SARVAM_API_KEY"));
+    assert.ok(result.missing.includes("CALL_PUBLIC_BASE_URL"));
+  });
+
+  it("requires Google creds only when email-link is on", () => {
+    const off = checkCallAgent({ sarvam: { apiKey: "k" }, calling: { publicBaseUrl: "https://x" }, booking: { emailLink: false } });
+    assert.equal(off.ok, true);
+    const on = checkCallAgent({ sarvam: { apiKey: "k" }, calling: { publicBaseUrl: "https://x" }, booking: { emailLink: true, googleRefreshToken: "" } });
+    assert.equal(on.ok, false);
+    assert.ok(on.missing.includes("GOOGLE_AGENT_REFRESH_TOKEN"));
+  });
+
+  it("flags missing meet-agent env", () => {
+    const result = checkMeetAgent({ sarvam: { apiKey: "k" }, browser: { meetUrl: "" } });
+    assert.equal(result.ok, false);
+    assert.ok(result.missing.includes("GOOGLE_MEET_URL"));
   });
 });

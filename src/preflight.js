@@ -311,15 +311,19 @@ export function runPreflight(config, { mode = "rehearse", cwd = process.cwd() } 
     ...validateDemoAssets(config, { cwd })
   ];
 
-  if (normalizedMode === "launch" && !hasValue(getConfigValue(config, "audio.captureCommand"))) {
+  if (
+    normalizedMode === "launch" &&
+    !hasValue(getConfigValue(config, "audio.streamCommand")) &&
+    !hasValue(getConfigValue(config, "audio.captureCommand"))
+  ) {
     issues.push(
       issue({
         severity: "warning",
         source: "config",
-        key: "AUDIO_CAPTURE_COMMAND",
-        configPath: "audio.captureCommand",
+        key: "AUDIO_STREAM_COMMAND",
+        configPath: "audio.streamCommand",
         message:
-          "AUDIO_CAPTURE_COMMAND is not set, so automatic spoken client Q&A will be disabled. Typed Q&A and scripted narration still work."
+          "Neither AUDIO_STREAM_COMMAND nor AUDIO_CAPTURE_COMMAND is set, so automatic spoken client Q&A will be disabled. Typed Q&A and scripted narration still work."
       })
     );
   }
@@ -371,4 +375,31 @@ export function assertPreflightReady(config, options = {}) {
     throw new Error(formatPreflightReport(result));
   }
   return result;
+}
+
+/**
+ * @param {object} config
+ * @returns {{ok: boolean, missing: string[]}}
+ */
+export function checkCallAgent(config) {
+  const missing = [];
+  if (!config.sarvam?.apiKey) missing.push("SARVAM_API_KEY");
+  if (!config.calling?.publicBaseUrl) missing.push("CALL_PUBLIC_BASE_URL");
+  if (config.booking?.emailLink) {
+    if (!config.booking.googleClientId) missing.push("GOOGLE_AGENT_CLIENT_ID");
+    if (!config.booking.googleClientSecret) missing.push("GOOGLE_AGENT_CLIENT_SECRET");
+    if (!config.booking.googleRefreshToken) missing.push("GOOGLE_AGENT_REFRESH_TOKEN");
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+/**
+ * @param {object} config
+ * @returns {{ok: boolean, missing: string[]}}
+ */
+export function checkMeetAgent(config) {
+  const missing = [];
+  if (!config.sarvam?.apiKey) missing.push("SARVAM_API_KEY");
+  if (!config.browser?.meetUrl) missing.push("GOOGLE_MEET_URL");
+  return { ok: missing.length === 0, missing };
 }

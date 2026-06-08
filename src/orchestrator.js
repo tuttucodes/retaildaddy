@@ -290,6 +290,16 @@ export class DemoOrchestrator {
 
     const productPage = this.demoController.page;
     await productPage.bringToFront();
+    let canPresent = true;
+    try {
+      if (this.config.browser.autoPresent) await this.meetAgent.tryStartPresenting();
+    } catch (error) {
+      canPresent = false;
+      this.logger.error(`Screen share failed; continuing audio-only and narrating screens: ${error.message}`);
+    }
+    if (!canPresent) {
+      await this.speak("I'm having a small screen-share hiccup, so I'll walk you through it by voice and fix the share in a moment.", "share-fallback");
+    }
     await this.speak(this.script.opening, "opening");
 
     for (const step of this.script.steps) {
