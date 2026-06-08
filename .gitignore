@@ -3,6 +3,7 @@ node_modules/
 .env
 .tmp/
 .live-room-tmp/
+.meet-diagnostics/
 recordings/
 audio-out/
 playwright-profile/

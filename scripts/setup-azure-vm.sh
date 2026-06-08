@@ -63,6 +63,7 @@ install_base_packages() {
     fonts-noto \
     fonts-noto-color-emoji \
     gnupg \
+    libasound2-plugins \
     lsb-release \
     pulseaudio \
     pulseaudio-utils \

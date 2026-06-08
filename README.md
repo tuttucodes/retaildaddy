@@ -37,6 +37,8 @@ Edit `.env`:
 - `DEMO_SCRIPT_PATH`: the JSON demo script
 - `PRODUCT_KB_PATH`: your product knowledge markdown
 - `AUDIO_CAPTURE_COMMAND`: required for full live Q&A. See [docs/AUDIO_ROUTING.md](/Volumes/T7/retaildaddy/docs/AUDIO_ROUTING.md).
+- `BROWSER_CHANNEL=chrome`: recommended on Azure/Linux so Meet runs in installed Google Chrome.
+- `MEET_SAVE_DIAGNOSTICS=true`: saves screenshots, button labels, and media-device checks under `.meet-diagnostics/`.
 
 Then edit [demo/demo-script.example.json](/Volumes/T7/retaildaddy/demo/demo-script.example.json) and [demo/product-knowledge.example.md](/Volumes/T7/retaildaddy/demo/product-knowledge.example.md) for your actual product.
 
@@ -96,7 +98,11 @@ npm run agent -- stt ./recordings/question.wav
 
 4. If Meet does not start presentation automatically on the first run, manually click screen share and choose the tab/window named `RetailDaddy Agent Stage`, then keep `MEET_AUTO_PRESENT=true` for later runs.
 
-5. After the scripted demo, the terminal stays in Q&A mode. With `--listen-audio`, it also starts `AUDIO_CAPTURE_COMMAND` and watches `recordings/` for stable audio chunks:
+5. If Meet says no microphone was found, check the latest `.meet-diagnostics/*.json` file. It records whether Chrome could open `getUserMedia({ audio: true })` and which audio input devices Meet could see.
+
+6. If automatic presentation does not confirm, check the latest `.meet-diagnostics/*.png` screenshot and set `DESKTOP_CAPTURE_SOURCE` to the exact capture label shown by Chrome/Meet, commonly `Entire screen`, `Screen 1`, or `RetailDaddy Agent Stage`.
+
+7. After the scripted demo, the terminal stays in Q&A mode. With `--listen-audio`, it also starts `AUDIO_CAPTURE_COMMAND` and watches `recordings/` for stable audio chunks:
 
    ```bash
    npm run agent -- launch "https://meet.google.com/xxx-yyyy-zzz" --listen-audio

@@ -49,7 +49,9 @@ Environment:
   XVFB_RESOLUTION          Defaults to 1920x1080x24
   BROWSER_VIEWPORT_WIDTH   Defaults to 1920
   BROWSER_VIEWPORT_HEIGHT  Defaults to 1080
+  BROWSER_CHANNEL          Defaults to chrome in this Azure wrapper
   MEET_AUTO_PRESENT        Defaults to true in this Azure wrapper
+  MEET_SAVE_DIAGNOSTICS    Defaults to true in this Azure wrapper
   DESKTOP_CAPTURE_SOURCE   Defaults to "Entire screen" in this Azure wrapper
   PULSE_MIC_SINK_NAME      Defaults to retaildaddy_agent_mic_sink
   PULSE_MEET_SINK_NAME     Defaults to retaildaddy_meet_speaker_sink
@@ -242,12 +244,15 @@ run_agent() {
   export DESKTOP_CAPTURE_SOURCE="${DESKTOP_CAPTURE_SOURCE:-Entire screen}"
   export AGENT_STAGE_TITLE="${AGENT_STAGE_TITLE:-RetailDaddy Agent Stage}"
   export MEET_AUTO_PRESENT="${MEET_AUTO_PRESENT:-true}"
+  export MEET_SAVE_DIAGNOSTICS="${MEET_SAVE_DIAGNOSTICS:-true}"
+  export MEET_DIAGNOSTICS_DIR="${MEET_DIAGNOSTICS_DIR:-$PROJECT_DIR/.meet-diagnostics}"
+  export BROWSER_CHANNEL="${BROWSER_CHANNEL:-chrome}"
   export BROWSER_VIEWPORT_WIDTH="${BROWSER_VIEWPORT_WIDTH:-1920}"
   export BROWSER_VIEWPORT_HEIGHT="${BROWSER_VIEWPORT_HEIGHT:-1080}"
 
   mkdir -p "${AUDIO_OUT_DIR:-$PROJECT_DIR/audio-out}" "${AUDIO_INPUT_DIR:-$PROJECT_DIR/recordings}"
 
-  log "Running agent command '$COMMAND' on DISPLAY=$DISPLAY."
+  log "Running agent command '$COMMAND' on DISPLAY=$DISPLAY with BROWSER_CHANNEL=$BROWSER_CHANNEL."
   case "$COMMAND" in
     demo)
       npm run agent -- launch "$GOOGLE_MEET_URL" --listen-audio

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 export class GoogleMeetAgent {
@@ -7,6 +8,7 @@ export class GoogleMeetAgent {
     this.context = null;
     this.meetPage = null;
     this.productPage = null;
+    this.diagnosticIndex = 0;
   }
 
   async launch() {
@@ -14,16 +16,25 @@ export class GoogleMeetAgent {
     const profileDir = path.resolve(this.config.paths.chromeProfileDir);
     const browserArgs = this.buildChromiumArgs();
 
-    this.context = await chromium.launchPersistentContext(profileDir, {
+    const launchOptions = {
       headless: this.config.browser.headless,
       viewport: {
         width: this.config.browser.viewportWidth,
         height: this.config.browser.viewportHeight
       },
       args: browserArgs
-    });
+    };
+
+    if (this.config.browser.channel) {
+      launchOptions.channel = this.config.browser.channel;
+    }
+
+    this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
 
     this.context.setDefaultTimeout(12000);
+    this.logger.info(
+      `Launching Meet browser${this.config.browser.channel ? ` with channel '${this.config.browser.channel}'` : ""}.`
+    );
     await this.grantMeetPermissions();
     return this.context;
   }
@@ -39,6 +50,10 @@ export class GoogleMeetAgent {
       "--no-first-run",
       "--hide-crash-restore-bubble",
       "--disable-session-crashed-bubble",
+      "--disable-dev-shm-usage",
+      "--disable-features=AudioServiceSandbox",
+      "--force-device-scale-factor=1",
+      "--high-dpi-support=1",
       `--auto-select-desktop-capture-source=${this.config.browser.desktopCaptureSource}`,
       `--auto-select-tab-capture-source-by-title=${this.config.browser.stageTitle}`
     ];
@@ -100,18 +115,24 @@ export class GoogleMeetAgent {
     if (!this.context) await this.launch();
     this.meetPage = await this.context.newPage();
     await this.meetPage.goto(this.config.browser.meetUrl, { waitUntil: "domcontentloaded" });
+    await this.meetPage.waitForTimeout(1500);
+    await this.logMediaDeviceDiagnostics("loaded");
 
     await this.enterMeetingCodeFromHomeIfNeeded();
     await this.dismissPrejoinToggles();
+    await this.ensureMicrophoneUnmuted("prejoin");
     await this.fillDisplayNameIfNeeded();
     const joined = (await this.isInMeetRoom()) || (await this.clickJoinButton());
     if (!joined) {
+      await this.saveMeetDiagnostics("join-not-confirmed");
       throw new Error(
         "Meet join was not confirmed. The agent may need to be admitted by the host or signed in with an invited Google account."
       );
     }
 
-    await this.ensureMicrophoneUnmuted();
+    await this.logMediaDeviceDiagnostics("joined");
+    await this.ensureMicrophoneUnmuted("joined");
+    await this.saveMeetDiagnostics("joined");
 
     if (autoPresent) {
       await this.tryStartPresenting();
@@ -231,7 +252,25 @@ export class GoogleMeetAgent {
     }
   }
 
-  async ensureMicrophoneUnmuted() {
+  async ensureMicrophoneUnmuted(stage = "meet") {
+    const alreadyOnButtons = [
+      this.meetPage.getByRole("button", { name: /turn off microphone/i }).first(),
+      this.meetPage.getByRole("button", { name: /^mute$/i }).first(),
+      this.meetPage.getByRole("button", { name: /microphone.*on/i }).first(),
+      this.meetPage.locator("button[aria-label*='Turn off microphone' i]").first()
+    ];
+
+    for (const button of alreadyOnButtons) {
+      try {
+        if (await button.isVisible({ timeout: 1200 })) {
+          this.logger.info(`Meet microphone already appears unmuted at ${stage}.`);
+          return true;
+        }
+      } catch {
+        // Try next Meet label variant.
+      }
+    }
+
     const buttons = [
       this.meetPage.getByRole("button", { name: /turn on microphone/i }).first(),
       this.meetPage.getByRole("button", { name: /unmute/i }).first(),
@@ -243,7 +282,7 @@ export class GoogleMeetAgent {
       try {
         if (await button.isVisible({ timeout: 2000 })) {
           await button.click({ timeout: 3000 });
-          this.logger.info("Clicked Meet microphone unmute control.");
+          this.logger.info(`Clicked Meet microphone unmute control at ${stage}.`);
           await this.meetPage.waitForTimeout(500);
           return true;
         }
@@ -252,6 +291,7 @@ export class GoogleMeetAgent {
       }
     }
 
+    await this.saveMeetDiagnostics(`mic-control-not-found-${stage}`);
     return false;
   }
 
@@ -508,6 +548,7 @@ export class GoogleMeetAgent {
       await this.prepareProductStage();
     }
 
+    await this.revealMeetControls();
     const buttons = [
       this.meetPage.getByRole("button", { name: /present now/i }).first(),
       this.meetPage.getByRole("button", { name: /present/i }).first(),
@@ -528,7 +569,7 @@ export class GoogleMeetAgent {
         }
 
         this.logger.info("Attempted to start Meet presentation.");
-        return true;
+        return await this.waitForPresentationStarted();
       } catch {
         // Try next candidate.
       }
@@ -541,11 +582,41 @@ export class GoogleMeetAgent {
         await this.productPage.bringToFront();
       }
       this.logger.info("Attempted to start Meet presentation through DOM fallback.");
-      return true;
+      return await this.waitForPresentationStarted();
     }
 
     await this.logMeetButtonLabels();
+    await this.saveMeetDiagnostics("present-control-not-found");
     this.logger.warn("Auto-present did not find the Meet presentation controls.");
+    return false;
+  }
+
+  async waitForPresentationStarted({ timeoutMs = 12000 } = {}) {
+    const markers = [
+      this.meetPage.getByRole("button", { name: /stop presenting|stop sharing/i }).first(),
+      this.meetPage.locator("button[aria-label*='Stop presenting' i]").first(),
+      this.meetPage.locator("button[aria-label*='Stop sharing' i]").first(),
+      this.meetPage.getByText(/you are presenting|you're presenting|presenting now/i).first()
+    ];
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await this.revealMeetControls();
+      for (const marker of markers) {
+        if (await marker.isVisible({ timeout: 300 }).catch(() => false)) {
+          this.logger.info("Meet presentation is confirmed active.");
+          await this.saveMeetDiagnostics("presenting");
+          return true;
+        }
+      }
+      await this.meetPage.waitForTimeout(800);
+    }
+
+    await this.logMeetButtonLabels();
+    await this.saveMeetDiagnostics("present-not-confirmed");
+    this.logger.warn(
+      "Meet presentation was not confirmed. Chrome may still be waiting in the native screen picker, or the capture-source label did not match."
+    );
     return false;
   }
 
@@ -583,9 +654,29 @@ export class GoogleMeetAgent {
   }
 
   async logMeetButtonLabels() {
-    const labels = await this.meetPage
-      .evaluate(() =>
-        Array.from(document.querySelectorAll("button,[role='button']"))
+    const labels = await this.getMeetButtonLabels();
+
+    this.logger.warn(`Visible Meet button labels: ${JSON.stringify(labels)}`);
+  }
+
+  async getMeetButtonLabels() {
+    if (!this.meetPage || this.meetPage.isClosed()) return [];
+
+    return this.meetPage
+      .evaluate(() => {
+        const isVisible = (element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
+
+        return Array.from(document.querySelectorAll("button,[role='button']"))
+          .filter(isVisible)
           .map((button) => ({
             text: (button.textContent || "").trim(),
             aria: button.getAttribute("aria-label") || "",
@@ -593,11 +684,115 @@ export class GoogleMeetAgent {
             title: button.getAttribute("title") || ""
           }))
           .filter((item) => item.text || item.aria || item.tooltip || item.title)
-          .slice(0, 80)
-      )
+          .slice(0, 100);
+      })
       .catch(() => []);
+  }
 
-    this.logger.warn(`Visible Meet button labels: ${JSON.stringify(labels)}`);
+  async logMediaDeviceDiagnostics(stage = "meet") {
+    const diagnostics = await this.getMediaDeviceDiagnostics();
+    this.logger.info(`Meet media diagnostics at ${stage}: ${JSON.stringify(diagnostics)}`);
+    return diagnostics;
+  }
+
+  async getMediaDeviceDiagnostics() {
+    if (!this.meetPage || this.meetPage.isClosed()) {
+      return { hasMeetPage: false };
+    }
+
+    return this.meetPage
+      .evaluate(async () => {
+        const result = {
+          hasMeetPage: true,
+          secureContext: window.isSecureContext,
+          hasMediaDevices: Boolean(navigator.mediaDevices),
+          getUserMedia: {
+            ok: false,
+            error: "",
+            tracks: []
+          },
+          devices: []
+        };
+
+        if (!navigator.mediaDevices) return result;
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          result.getUserMedia.ok = true;
+          result.getUserMedia.tracks = stream.getTracks().map((track) => ({
+            kind: track.kind,
+            label: track.label,
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState
+          }));
+          for (const track of stream.getTracks()) track.stop();
+        } catch (error) {
+          result.getUserMedia.error = `${error.name || "Error"}: ${error.message || ""}`.trim();
+        }
+
+        try {
+          result.devices = (await navigator.mediaDevices.enumerateDevices()).map((device) => ({
+            kind: device.kind,
+            label: device.label,
+            hasDeviceId: Boolean(device.deviceId),
+            hasGroupId: Boolean(device.groupId)
+          }));
+        } catch (error) {
+          result.enumerateDevicesError = `${error.name || "Error"}: ${error.message || ""}`.trim();
+        }
+
+        return result;
+      })
+      .catch((error) => ({
+        hasMeetPage: true,
+        error: error.message
+      }));
+  }
+
+  async saveMeetDiagnostics(stage) {
+    if (!this.config.browser.saveDiagnostics || !this.config.paths.meetDiagnosticsDir) {
+      return null;
+    }
+
+    if (!this.meetPage || this.meetPage.isClosed()) {
+      return null;
+    }
+
+    const index = String(++this.diagnosticIndex).padStart(3, "0");
+    const safeStage = String(stage || "meet")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const dir = this.config.paths.meetDiagnosticsDir;
+    fs.mkdirSync(dir, { recursive: true });
+
+    const basePath = path.join(dir, `${index}-${safeStage || "meet"}`);
+    const screenshotPath = `${basePath}.png`;
+    const jsonPath = `${basePath}.json`;
+    const diagnostics = {
+      stage,
+      at: new Date().toISOString(),
+      url: this.meetPage.url(),
+      title: await this.meetPage.title().catch(() => ""),
+      viewport: {
+        width: this.config.browser.viewportWidth,
+        height: this.config.browser.viewportHeight
+      },
+      browser: {
+        channel: this.config.browser.channel || "playwright-default",
+        desktopCaptureSource: this.config.browser.desktopCaptureSource,
+        stageTitle: this.config.browser.stageTitle
+      },
+      media: await this.getMediaDeviceDiagnostics(),
+      buttons: await this.getMeetButtonLabels()
+    };
+
+    await this.meetPage.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+    fs.writeFileSync(jsonPath, JSON.stringify(diagnostics, null, 2));
+    this.logger.info(`Saved Meet diagnostics for '${stage}' to ${jsonPath} and ${screenshotPath}.`);
+
+    return { jsonPath, screenshotPath };
   }
 
   async choosePresentationSourceType() {

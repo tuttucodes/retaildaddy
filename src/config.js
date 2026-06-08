@@ -82,7 +82,8 @@ export function loadConfig() {
       ),
       audioOutDir: resolveProjectPath(process.env.AUDIO_OUT_DIR || "audio-out"),
       audioInputDir: resolveProjectPath(process.env.AUDIO_INPUT_DIR || "recordings"),
-      chromeProfileDir: resolveProjectPath(process.env.CHROME_PROFILE_DIR || "playwright-profile")
+      chromeProfileDir: resolveProjectPath(process.env.CHROME_PROFILE_DIR || "playwright-profile"),
+      meetDiagnosticsDir: resolveProjectPath(process.env.MEET_DIAGNOSTICS_DIR || ".meet-diagnostics")
     },
     browser: {
       productUrl: process.env.PRODUCT_URL || "http://localhost:3000",
@@ -93,7 +94,9 @@ export function loadConfig() {
       stageTitle: process.env.AGENT_STAGE_TITLE || process.env.DESKTOP_CAPTURE_SOURCE || "RetailDaddy Agent Stage",
       viewportWidth: numberFromEnv("BROWSER_VIEWPORT_WIDTH", 1920),
       viewportHeight: numberFromEnv("BROWSER_VIEWPORT_HEIGHT", 1080),
-      headless: boolFromEnv("HEADLESS", false)
+      headless: boolFromEnv("HEADLESS", false),
+      channel: process.env.BROWSER_CHANNEL || "",
+      saveDiagnostics: boolFromEnv("MEET_SAVE_DIAGNOSTICS", true)
     },
     audio: {
       playCommand: process.env.AUDIO_PLAY_COMMAND || "",
