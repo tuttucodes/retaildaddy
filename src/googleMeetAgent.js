@@ -318,13 +318,17 @@ export class GoogleMeetAgent {
   }
 
   async isInMeetRoom() {
+    await this.revealMeetControls();
+
     const roomControls = [
       this.meetPage.getByRole("button", { name: /leave call/i }).first(),
-      this.meetPage.getByRole("button", { name: /share screen/i }).first(),
-      this.meetPage.getByRole("button", { name: /turn off microphone/i }).first(),
+      this.meetPage.getByRole("button", { name: /chat with everyone/i }).first(),
+      this.meetPage.getByRole("button", { name: /more activities in this meeting/i }).first(),
+      this.meetPage.getByRole("button", { name: /meeting details/i }).first(),
       this.meetPage.locator("button[aria-label*='Leave call' i]").first(),
-      this.meetPage.locator("button[aria-label*='Share screen' i]").first(),
-      this.meetPage.locator("button[aria-label*='Turn off microphone' i]").first()
+      this.meetPage.locator("button[aria-label*='Chat with everyone' i]").first(),
+      this.meetPage.locator("button[aria-label*='More activities in this meeting' i]").first(),
+      this.meetPage.locator("button[aria-label*='Meeting details' i]").first()
     ];
 
     for (const control of roomControls) {
@@ -336,15 +340,25 @@ export class GoogleMeetAgent {
     return false;
   }
 
+  async revealMeetControls() {
+    try {
+      await this.meetPage.mouse.move(
+        Math.round(this.config.browser.viewportWidth / 2),
+        this.config.browser.viewportHeight - 80
+      );
+      await this.meetPage.waitForTimeout(100);
+    } catch {
+      // If pointer movement fails, the visibility checks below are still safe.
+    }
+  }
+
   async waitForMeetRoom({ timeoutMs = 60000, quiet = false } = {}) {
     const markers = [
       this.meetPage.getByRole("button", { name: /leave call|leave/i }).first(),
-      this.meetPage.getByRole("button", { name: /share screen/i }).first(),
-      this.meetPage.getByRole("button", { name: /turn off microphone/i }).first(),
-      this.meetPage.getByRole("button", { name: /present now|present/i }).first(),
-      this.meetPage.getByText(/you are in the meeting|meeting details/i).first(),
-      this.meetPage.getByText(/camera not found/i).first(),
-      this.meetPage.getByText(/microphone not found/i).first()
+      this.meetPage.getByRole("button", { name: /chat with everyone/i }).first(),
+      this.meetPage.getByRole("button", { name: /more activities in this meeting/i }).first(),
+      this.meetPage.getByRole("button", { name: /meeting details/i }).first(),
+      this.meetPage.getByText(/you are in the meeting/i).first()
     ];
 
     const blockedMarkers = [
@@ -357,6 +371,8 @@ export class GoogleMeetAgent {
 
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
+      await this.revealMeetControls();
+
       for (const blockedMarker of blockedMarkers) {
         if (await blockedMarker.isVisible({ timeout: 250 }).catch(() => false)) {
           const text = await blockedMarker.textContent().catch(() => "");
