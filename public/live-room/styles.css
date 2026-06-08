@@ -256,6 +256,12 @@ video {
   background: rgba(25, 195, 125, 0.14);
 }
 
+.tool.attention {
+  border-color: rgba(74, 163, 255, 0.85);
+  background: rgba(74, 163, 255, 0.18);
+  color: #d8ecff;
+}
+
 .tool.leave {
   border-color: rgba(255, 92, 92, 0.52);
   color: #ffd2d2;

@@ -19,7 +19,10 @@ const state = {
   analyser: null,
   vadTimer: null,
   speechStartedAt: 0,
-  lastVoiceAt: 0
+  lastVoiceAt: 0,
+  audioContext: null,
+  audioUnlocked: false,
+  pendingAudioUrl: ""
 };
 
 const els = {
@@ -40,6 +43,7 @@ const els = {
   camBtn: document.getElementById("camBtn"),
   shareBtn: document.getElementById("shareBtn"),
   demoBtn: document.getElementById("demoBtn"),
+  soundBtn: document.getElementById("soundBtn"),
   leaveBtn: document.getElementById("leaveBtn"),
   chatToggle: document.getElementById("chatToggle"),
   transcriptPanel: document.getElementById("transcriptPanel"),
@@ -79,6 +83,81 @@ function escapeHtml(value) {
 
 function updateButton(button, active) {
   button.classList.toggle("active", active);
+}
+
+function getAudioContext() {
+  if (state.audioContext) return state.audioContext;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  state.audioContext = new AudioContextClass();
+  return state.audioContext;
+}
+
+async function unlockAudioPlayback() {
+  const context = getAudioContext();
+  if (!context) {
+    throw new Error("This browser does not support Web Audio playback.");
+  }
+
+  if (context.state === "suspended") {
+    await context.resume();
+  }
+
+  const buffer = context.createBuffer(1, 1, 22050);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  source.start(0);
+  state.audioUnlocked = true;
+  els.soundBtn.hidden = true;
+  return context;
+}
+
+async function playWithWebAudio(audioUrl) {
+  const context = await unlockAudioPlayback();
+  const response = await fetch(audioUrl);
+  if (!response.ok) {
+    throw new Error(`Audio download failed with HTTP ${response.status}`);
+  }
+
+  const encoded = await response.arrayBuffer();
+  const audioBuffer = await context.decodeAudioData(encoded.slice(0));
+  await new Promise((resolve) => {
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(context.destination);
+    source.onended = resolve;
+    source.start(0);
+  });
+}
+
+async function playWithHtmlAudio(audioUrl) {
+  const audio = new Audio(audioUrl);
+  audio.preload = "auto";
+  await audio.play();
+  await new Promise((resolve, reject) => {
+    audio.onended = resolve;
+    audio.onerror = () => reject(new Error(audio.error?.message || "HTML audio playback failed."));
+  });
+}
+
+async function playAiAudio(audioUrl) {
+  try {
+    await playWithWebAudio(audioUrl);
+    return;
+  } catch (webAudioError) {
+    try {
+      await playWithHtmlAudio(audioUrl);
+      return;
+    } catch (htmlAudioError) {
+      state.pendingAudioUrl = audioUrl;
+      els.soundBtn.hidden = false;
+      els.soundBtn.classList.add("attention");
+      throw new Error(`${webAudioError.message}; ${htmlAudioError.message}`);
+    }
+  }
 }
 
 function createVideo(stream, { muted = false } = {}) {
@@ -425,7 +504,8 @@ function startVad() {
   const audioTrack = state.localStream?.getAudioTracks()[0];
   if (!audioTrack) return;
 
-  const audioContext = new AudioContext();
+  const audioContext = getAudioContext();
+  if (!audioContext) return;
   const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 1024;
@@ -528,15 +608,9 @@ async function handleAgentAnswer(data) {
     els.aiState.textContent = "Speaking";
     els.aiTile.classList.add("speaking");
     try {
-      const audio = new Audio(data.audioUrl);
-      audio.preload = "auto";
-      await audio.play();
-      await new Promise((resolve) => {
-        audio.onended = resolve;
-        audio.onerror = resolve;
-      });
+      await playAiAudio(data.audioUrl);
     } catch (error) {
-      addMessage("agent", `Audio playback was blocked: ${error.message}`, "System");
+      addMessage("agent", `Tap Sound once to enable AI voice. ${error.message}`, "System");
     } finally {
       state.aiSpeaking = false;
       els.aiState.textContent = "Listening";
@@ -645,9 +719,15 @@ function leaveRoom() {
 
 els.joinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const audioUnlock = unlockAudioPlayback().catch((error) => {
+    els.soundBtn.hidden = false;
+    els.soundBtn.classList.add("attention");
+    addMessage("agent", `Tap Sound once if you do not hear the AI voice. ${error.message}`, "System");
+  });
   els.joinDialog.close();
   try {
     await joinRoom();
+    await audioUnlock;
   } catch (error) {
     setStatus("Join failed");
     addMessage("agent", error.message, "System");
@@ -659,6 +739,19 @@ els.micBtn.addEventListener("click", toggleMic);
 els.camBtn.addEventListener("click", toggleCamera);
 els.shareBtn.addEventListener("click", () => shareScreen().catch((error) => addMessage("agent", error.message, "System")));
 els.demoBtn.addEventListener("click", () => startAiDemo().catch((error) => addMessage("agent", error.message, "System")));
+els.soundBtn.addEventListener("click", async () => {
+  try {
+    await unlockAudioPlayback();
+    els.soundBtn.classList.remove("attention");
+    const pendingAudioUrl = state.pendingAudioUrl;
+    state.pendingAudioUrl = "";
+    if (pendingAudioUrl) {
+      await playAiAudio(pendingAudioUrl);
+    }
+  } catch (error) {
+    addMessage("agent", `Could not enable sound: ${error.message}`, "System");
+  }
+});
 els.leaveBtn.addEventListener("click", leaveRoom);
 els.chatToggle.addEventListener("click", () => {
   els.transcriptPanel.hidden = !els.transcriptPanel.hidden;

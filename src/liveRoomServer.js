@@ -254,6 +254,21 @@ function createLiveRoomServer({
       pace: config.sarvam.ttsPace
     });
 
+    const mp3Path = audioPath.replace(/\.wav$/i, ".mp3");
+    try {
+      await runCommand(
+        "ffmpeg",
+        ["-hide_banner", "-y", "-loglevel", "error", "-i", audioPath, "-codec:a", "libmp3lame", "-q:a", "4", mp3Path],
+        { logger }
+      );
+      return {
+        audioUrl: `/audio/${encodeURIComponent(path.basename(mp3Path))}`,
+        languageCode
+      };
+    } catch (error) {
+      logger.warn(`Could not transcode TTS audio to MP3; using WAV fallback: ${error.message}`);
+    }
+
     return {
       audioUrl: `/audio/${encodeURIComponent(path.basename(audioPath))}`,
       languageCode
