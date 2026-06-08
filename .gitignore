@@ -10,3 +10,4 @@ playwright-profile/
 playwright-report/
 test-results/
 .azure/
+CLAUDE_HANDOFF.md
