@@ -262,13 +262,16 @@ export class GoogleMeetAgent {
 
   async clickJoinButton() {
     const candidates = [
-      this.meetPage.getByRole("button", { name: /ask to join/i }).first(),
-      this.meetPage.getByRole("button", { name: /join now/i }).first(),
-      this.meetPage.getByRole("button", { name: /join/i }).first()
+      this.meetPage.getByRole("button", { name: /^ask to join$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^join now$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Ask to join$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Join now$/i }).first()
     ];
 
     for (const button of candidates) {
       try {
+        const text = await button.textContent({ timeout: 1500 }).catch(() => "");
+        if (/companion/i.test(text || "")) continue;
         await button.click({ timeout: 5000 });
         this.logger.info("Clicked Meet join button.");
         return await this.waitForMeetRoom();
@@ -291,13 +294,22 @@ export class GoogleMeetAgent {
     const blockedMarkers = [
       this.meetPage.getByText(/you can['’]t join this video call/i).first(),
       this.meetPage.getByText(/returning to home screen/i).first(),
-      this.meetPage.getByText(/no one can join a meeting unless invited or admitted by the host/i).first()
+      this.meetPage.getByText(/no one can join a meeting unless invited or admitted by the host/i).first(),
+      this.meetPage.getByText(/you['’]re in companion mode/i).first(),
+      this.meetPage.getByText(/speakers and mic are unavailable/i).first()
     ];
 
     const startedAt = Date.now();
     while (Date.now() - startedAt < 60000) {
       for (const blockedMarker of blockedMarkers) {
         if (await blockedMarker.isVisible({ timeout: 250 }).catch(() => false)) {
+          const text = await blockedMarker.textContent().catch(() => "");
+          if (/companion mode|mic are unavailable/i.test(text || "")) {
+            throw new Error(
+              "Meet joined in Companion mode, where microphone and speaker are disabled. The agent must join with the normal 'Join now' button."
+            );
+          }
+
           throw new Error(
             "Meet rejected the agent before it entered the room. Invite the signed-in bot account or admit the guest from the host account."
           );
