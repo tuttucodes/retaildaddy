@@ -14,6 +14,7 @@ function usage() {
   console.log(`Usage:
   npm run agent -- auth
   npm run agent -- launch "https://meet.google.com/xxx-yyyy-zzz" [--product http://localhost:3000] [--listen-audio] [--manual-present] [--system-audio]
+  npm run agent -- voice "https://meet.google.com/xxx-yyyy-zzz" [--system-audio]
   npm run agent -- doctor [rehearse|demo|launch]
   npm run rehearse
   npm run demo
@@ -134,6 +135,32 @@ async function main() {
         await orchestrator.runScriptedDemo({ withMeet: true });
         await orchestrator.operatorLoop({ listenAudio });
       }
+    } finally {
+      await orchestrator.close();
+    }
+    return;
+  }
+
+  if (command === "voice") {
+    const launchOptions = parseLaunchArgs(args);
+    if (!launchOptions.meetUrl) {
+      throw new Error("Provide the Google Meet link: npm run agent -- voice \"https://meet.google.com/...\"");
+    }
+
+    config.browser.meetUrl = launchOptions.meetUrl;
+    if (launchOptions.productUrl) config.browser.productUrl = launchOptions.productUrl;
+    config.browser.autoPresent = false;
+    config.audio.browserPlayback = launchOptions.browserAudio;
+    config.agent.multilingual = true;
+    config.sarvam.sttLanguageCode = "unknown";
+
+    assertReady(config, "demo");
+    const orchestrator = new DemoOrchestrator({ config, logger });
+    try {
+      await orchestrator.runVoiceAgent({
+        withMeet: true,
+        listenAudio: true
+      });
     } finally {
       await orchestrator.close();
     }

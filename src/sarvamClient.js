@@ -2,18 +2,52 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SARVAM_BASE_URL = "https://api.sarvam.ai";
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
-function ensureOkResponse(response, label) {
-  if (response.ok) return response;
-  return response.text().then((body) => {
-    throw new Error(`${label} failed with HTTP ${response.status}: ${body}`);
-  });
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFetchError(error) {
+  return error?.name !== "AbortError";
 }
 
 export class SarvamClient {
-  constructor({ apiKey, logger }) {
+  constructor({ apiKey, logger, fetchImpl = fetch, maxRetries = 2, retryDelayMs = 500 }) {
     this.apiKey = apiKey;
     this.logger = logger;
+    this.fetchImpl = fetchImpl;
+    this.maxRetries = maxRetries;
+    this.retryDelayMs = retryDelayMs;
+  }
+
+  async requestWithRetries(label, buildRequest, { maxRetries = this.maxRetries } = {}) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        const { url, init } = buildRequest();
+        const response = await this.fetchImpl(url, init);
+        if (response.ok) return response;
+
+        const body = await response.text();
+        lastError = new Error(`${label} failed with HTTP ${response.status}: ${body}`);
+        if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === maxRetries) {
+          throw lastError;
+        }
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableFetchError(error) || attempt === maxRetries) {
+          throw error;
+        }
+      }
+
+      const waitMs = this.retryDelayMs * 2 ** attempt;
+      this.logger?.warn?.(`${label} failed; retrying in ${waitMs}ms.`);
+      await delay(waitMs);
+    }
+
+    throw lastError;
   }
 
   async transcribeFile(filePath, options = {}) {
@@ -26,7 +60,9 @@ export class SarvamClient {
     formData.set("model", options.model || "saaras:v3");
 
     if (options.mode) formData.set("mode", options.mode);
-    if (options.languageCode) formData.set("language_code", options.languageCode);
+    if (options.languageCode && options.languageCode !== "unknown") {
+      formData.set("language_code", options.languageCode);
+    }
     if (options.inputAudioCodec) formData.set("input_audio_codec", options.inputAudioCodec);
     if (options.withTimestamps != null) {
       formData.set("with_timestamps", String(Boolean(options.withTimestamps)));

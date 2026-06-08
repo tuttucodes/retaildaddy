@@ -10,6 +10,77 @@ import { ProductDemoController } from "./productDemoController.js";
 import { GoogleMeetAgent } from "./googleMeetAgent.js";
 import { requireSarvamKey } from "./config.js";
 
+const DUPLICATE_TRANSCRIPT_WINDOW_MS = 20_000;
+const AGENT_ECHO_WINDOW_MS = 90_000;
+const FILLER_TRANSCRIPTS = new Set([
+  "ah",
+  "aha",
+  "hmm",
+  "hm",
+  "ok",
+  "okay",
+  "uh",
+  "um",
+  "yeah",
+  "yes",
+  "അം",
+  "ആ",
+  "ആം",
+  "ഓ",
+  "ഹം",
+  "ഹ്മ്",
+  "മ്മ്",
+  "ശരി"
+]);
+
+function detectSarvamTtsLanguageCode(text, fallback = "en-IN") {
+  const value = String(text || "");
+  if (/[\u0d00-\u0d7f]/u.test(value)) return "ml-IN";
+  if (/[\u0900-\u097f]/u.test(value)) return "hi-IN";
+  if (/[\u0b80-\u0bff]/u.test(value)) return "ta-IN";
+  if (/[\u0c00-\u0c7f]/u.test(value)) return "te-IN";
+  if (/[\u0c80-\u0cff]/u.test(value)) return "kn-IN";
+  if (/[\u0980-\u09ff]/u.test(value)) return "bn-IN";
+  if (/[\u0a80-\u0aff]/u.test(value)) return "gu-IN";
+  if (/[\u0a00-\u0a7f]/u.test(value)) return "pa-IN";
+  return fallback;
+}
+
+function normalizeLiveTranscript(text) {
+  return String(text || "")
+    .toLocaleLowerCase("en-IN")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenSet(text) {
+  return new Set(normalizeLiveTranscript(text).split(" ").filter(Boolean));
+}
+
+function transcriptSimilarity(left, right) {
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+
+  const leftTokens = tokenSet(left);
+  const rightTokens = tokenSet(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+
+  return overlap / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function isLikelyNoiseTranscript(normalized) {
+  if (!normalized) return true;
+  const tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.length === 1 && FILLER_TRANSCRIPTS.has(tokens[0])) return true;
+  return normalized.length < 3;
+}
+
 export class DemoOrchestrator {
   constructor({ config, logger }) {
     this.config = config;
@@ -29,6 +100,8 @@ export class DemoOrchestrator {
     this.meetAgent = new GoogleMeetAgent({ config, logger });
     this.demoController = null;
     this.questionQueue = Promise.resolve();
+    this.recentLiveTranscripts = [];
+    this.recentAgentUtterances = [];
   }
 
   isDemoStartConfirmation(transcript) {
@@ -45,10 +118,14 @@ export class DemoOrchestrator {
   async speak(text, label = "speech") {
     requireSarvamKey(this.config);
     this.logger.info(`Speaking: ${text.slice(0, 90)}${text.length > 90 ? "..." : ""}`);
+    this.rememberAgentSpeech(text);
     const audioPath = createAudioFilePath(this.config.paths.audioOutDir, label, "wav");
+    const languageCode = this.config.agent.multilingual
+      ? detectSarvamTtsLanguageCode(text, "en-IN")
+      : this.config.sarvam.ttsLanguageCode;
     await this.sarvamClient.textToSpeechStream(text, audioPath, {
       model: this.config.sarvam.ttsModel,
-      languageCode: this.config.sarvam.ttsLanguageCode,
+      languageCode,
       speaker: this.config.sarvam.ttsSpeaker,
       pace: this.config.sarvam.ttsPace
     });
@@ -67,7 +144,73 @@ export class DemoOrchestrator {
       mode: this.config.sarvam.sttMode,
       languageCode: this.config.sarvam.sttLanguageCode
     });
-    return result.transcript || "";
+    return String(result.transcript || result.text || "").trim();
+  }
+
+  rememberAgentSpeech(text) {
+    const normalized = normalizeLiveTranscript(text);
+    if (!normalized) return;
+
+    const now = Date.now();
+    this.recentAgentUtterances.push({ normalized, at: now });
+    this.recentAgentUtterances = this.recentAgentUtterances.filter(
+      (entry) => now - entry.at <= AGENT_ECHO_WINDOW_MS
+    );
+  }
+
+  rememberLiveTranscript(transcript) {
+    const normalized = normalizeLiveTranscript(transcript);
+    if (!normalized) return;
+
+    const now = Date.now();
+    this.recentLiveTranscripts.push({ normalized, at: now });
+    this.recentLiveTranscripts = this.recentLiveTranscripts.filter(
+      (entry) => now - entry.at <= DUPLICATE_TRANSCRIPT_WINDOW_MS
+    );
+  }
+
+  liveTranscriptIgnoreReason(transcript) {
+    const normalized = normalizeLiveTranscript(transcript);
+    if (!normalized) return "empty transcript";
+
+    if (this.isDemoStartConfirmation(transcript)) {
+      return "";
+    }
+
+    if (isLikelyNoiseTranscript(normalized)) {
+      return "short filler/noise";
+    }
+
+    const now = Date.now();
+    const duplicate = this.recentLiveTranscripts.find(
+      (entry) => entry.normalized === normalized && now - entry.at <= DUPLICATE_TRANSCRIPT_WINDOW_MS
+    );
+    if (duplicate) return "duplicate transcript";
+
+    const echoedSpeech = this.recentAgentUtterances.find(
+      (entry) =>
+        now - entry.at <= AGENT_ECHO_WINDOW_MS &&
+        transcriptSimilarity(normalized, entry.normalized) >= 0.78
+    );
+    if (echoedSpeech) return "probable agent audio echo";
+
+    return "";
+  }
+
+  async handleLiveTranscript(transcript, filePath, { onTranscript } = {}) {
+    const reason = this.liveTranscriptIgnoreReason(transcript);
+    if (reason) {
+      this.logger.info(`Ignoring live transcript from ${filePath}: ${reason}.`);
+      return;
+    }
+
+    this.rememberLiveTranscript(transcript);
+    this.logger.info(`Transcript: ${transcript}`);
+    if (onTranscript) {
+      await onTranscript(transcript, filePath);
+    } else {
+      await this.answerQuestion(transcript);
+    }
   }
 
   async answerQuestion(question, { speak = true, focusFeature = true } = {}) {
@@ -152,12 +295,7 @@ export class DemoOrchestrator {
           this.logger.warn(`No transcript for ${filePath}`);
           return;
         }
-        this.logger.info(`Transcript: ${transcript}`);
-        if (onTranscript) {
-          await onTranscript(transcript, filePath);
-        } else {
-          await this.answerQuestion(transcript);
-        }
+        await this.handleLiveTranscript(transcript, filePath, { onTranscript });
       }
     });
   }
@@ -251,6 +389,37 @@ export class DemoOrchestrator {
         await this.waitForShutdownSignal();
       } else {
         await this.operatorLoop({ listenAudio: false });
+      }
+    } finally {
+      if (liveAudio) {
+        await liveAudio.stop();
+      }
+    }
+  }
+
+  async runVoiceAgent({ withMeet = true, listenAudio = true } = {}) {
+    requireSarvamKey(this.config);
+    if (withMeet) {
+      await this.meetAgent.launch();
+      await this.meetAgent.joinMeet({ autoPresent: false });
+    }
+
+    this.logger.info("Voice agent is live. Listening and answering every detected client utterance.");
+    const liveAudio = listenAudio
+      ? this.startLiveAudioController({
+          onTranscript: async (transcript) => {
+            await this.answerQuestion(transcript, { focusFeature: false });
+          }
+        })
+      : null;
+
+    try {
+      if (process.stdin.isTTY) {
+        await this.interactiveQa();
+      } else if (liveAudio) {
+        await this.waitForShutdownSignal();
+      } else {
+        this.logger.warn("Voice agent has no audio listener and no interactive TTY.");
       }
     } finally {
       if (liveAudio) {

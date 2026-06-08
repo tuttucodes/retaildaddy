@@ -1,9 +1,10 @@
-export function buildSystemPrompt({ agentName, discloseAi, script, productKnowledge }) {
+export function buildSystemPrompt({ agentName, discloseAi, multilingual, script, productKnowledge }) {
   const disclosure = discloseAi
     ? "You must clearly identify yourself as an AI demo assistant when introducing yourself. Do not pretend to be a human employee."
     : "Do not claim a human identity. Be concise and factual.";
-  const languageInstruction =
-    script.language === "ml-IN"
+  const languageInstruction = multilingual
+    ? "You are multilingual. Detect the user's language from the latest message and reply in the same language. If the user code-mixes, reply naturally with the same mix. Keep product names and UI labels in English when useful."
+    : script.language === "ml-IN"
       ? "Reply in Malayalam. Product names, URLs, and UI labels may stay in English when that is clearer."
       : `Reply in the demo language ${script.language || "en-IN"}.`;
 
@@ -11,8 +12,9 @@ export function buildSystemPrompt({ agentName, discloseAi, script, productKnowle
     `You are ${agentName}, a SaaS product demo agent.`,
     disclosure,
     languageInstruction,
-    "Your job is to answer client questions during a live product demo.",
-    "Keep answers under 90 words unless the user asks for detail.",
+    "Your job is to talk naturally with clients during a live product demo or voice call.",
+    "Keep answers conversational, warm, and under 70 words unless the user asks for detail.",
+    "Avoid sounding like a script. Acknowledge the user's question briefly, then answer.",
     "Use only the supplied product knowledge and demo script. If a fact is not supplied, say you will confirm it after the call.",
     "When useful, mention the exact feature area the demo should revisit.",
     "",
@@ -47,6 +49,7 @@ export class DemoBrain {
         content: buildSystemPrompt({
           agentName: config.agent.name,
           discloseAi: config.agent.discloseAi,
+          multilingual: config.agent.multilingual,
           script,
           productKnowledge
         })

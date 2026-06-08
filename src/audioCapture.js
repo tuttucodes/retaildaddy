@@ -4,6 +4,17 @@ import path from "node:path";
 import process from "node:process";
 
 const AUDIO_INPUT_DIR_PATTERN = /\$\{AUDIO_INPUT_DIR\}|\$AUDIO_INPUT_DIR/g;
+const CAPTURE_OUTPUT_EXTENSIONS = new Set([
+  ".aac",
+  ".flac",
+  ".m4a",
+  ".mp3",
+  ".ogg",
+  ".part",
+  ".tmp",
+  ".wav",
+  ".webm"
+]);
 
 function log(logger, level, message) {
   const target = logger?.[level] || logger?.log;
@@ -14,6 +25,31 @@ function log(logger, level, message) {
 
 function commandForLog(command, args) {
   return [command, ...args].map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(" ");
+}
+
+export function clearAudioCaptureFiles(inputDir, { logger } = {}) {
+  if (!inputDir || !fs.existsSync(inputDir)) return 0;
+
+  let removed = 0;
+  for (const entry of fs.readdirSync(inputDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+
+    const filePath = path.join(inputDir, entry.name);
+    const extension = path.extname(entry.name).toLowerCase();
+    if (!CAPTURE_OUTPUT_EXTENSIONS.has(extension)) continue;
+
+    try {
+      fs.unlinkSync(filePath);
+      removed += 1;
+    } catch (error) {
+      log(logger, "warn", `Could not remove stale audio capture file ${entry.name}: ${error.message}`);
+    }
+  }
+
+  if (removed > 0) {
+    log(logger, "info", `Removed ${removed} stale audio capture file(s) from ${inputDir}.`);
+  }
+  return removed;
 }
 
 function attachLineLogger(stream, logger, level, prefix) {
@@ -181,6 +217,7 @@ export function startAudioCapture({
   cwd = process.cwd(),
   env = process.env,
   spawnImpl = spawn,
+  clearInputDir = true,
   stopTimeoutMs = 3000,
   onExit,
   onError
@@ -191,6 +228,9 @@ export function startAudioCapture({
   }
 
   fs.mkdirSync(options.inputDir, { recursive: true });
+  if (clearInputDir) {
+    clearAudioCaptureFiles(options.inputDir, { logger });
+  }
 
   log(
     logger,

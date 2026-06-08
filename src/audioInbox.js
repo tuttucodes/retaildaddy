@@ -49,23 +49,35 @@ function waitForNextPoll(pollMs, signal) {
   if (signal?.aborted) return Promise.resolve();
 
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, pollMs);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true }
-    );
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, pollMs);
+    signal?.addEventListener("abort", finish, { once: true });
   });
 }
 
-export async function watchAudioInbox({ inputDir, onFile, logger, pollMs = 1500, signal }) {
+export async function watchAudioInbox({
+  inputDir,
+  onFile,
+  logger,
+  pollMs = 1500,
+  stablePolls = 1,
+  signal
+}) {
   fs.mkdirSync(inputDir, { recursive: true });
-  const seen = new Set(listAudioFiles(inputDir));
+  const existingFiles = listAudioFiles(inputDir);
+  const seen = new Set(existingFiles);
   const pending = new Map();
-  logger.info(`Watching ${inputDir} for audio files.`);
+  const requiredStablePolls = Math.max(1, Number(stablePolls) || 1);
+  logger.info(
+    `Watching ${inputDir} for audio files.${existingFiles.length ? ` Ignoring ${existingFiles.length} existing file(s).` : ""}`
+  );
 
   while (!signal?.aborted) {
     const files = listAudioFiles(inputDir);
@@ -81,22 +93,37 @@ export async function watchAudioInbox({ inputDir, onFile, logger, pollMs = 1500,
         continue;
       }
       const previous = pending.get(file);
-      const current = { size: stat.size, mtimeMs: stat.mtimeMs };
+      const current = {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        stableCount:
+          previous && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs
+            ? previous.stableCount + 1
+            : 0
+      };
 
       if (!previous) {
         pending.set(file, current);
         continue;
       }
 
-      if (previous.size !== current.size || previous.mtimeMs !== current.mtimeMs) {
+      if (current.stableCount < requiredStablePolls) {
         pending.set(file, current);
         continue;
       }
 
       pending.delete(file);
       seen.add(file);
-      if (!shouldProcessAudioFile(file)) {
-        logger.info(`Skipping silent audio file ${path.basename(file)}.`);
+      let shouldProcess;
+      try {
+        shouldProcess = shouldProcessAudioFile(file);
+      } catch (error) {
+        logger.warn(`Skipping unreadable audio file ${path.basename(file)}: ${error.message}`);
+        continue;
+      }
+
+      if (!shouldProcess) {
+        logger.info(`Skipping silent or tiny audio file ${path.basename(file)}.`);
         continue;
       }
       try {

@@ -69,6 +69,7 @@ export function loadConfig() {
     agent: {
       name: process.env.AGENT_NAME || "RetailDaddy AI Demo Agent",
       discloseAi: boolFromEnv("DISCLOSE_AI", true),
+      multilingual: boolFromEnv("AGENT_MULTILINGUAL", false),
       waitForConfirmation: boolFromEnv("MEET_WAIT_FOR_CONFIRMATION", true),
       confirmationPattern:
         process.env.DEMO_CONFIRMATION_PATTERN ||

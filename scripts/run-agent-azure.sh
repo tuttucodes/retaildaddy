@@ -31,12 +31,13 @@ die() {
 usage() {
   cat <<EOF
 Usage:
-  scripts/run-agent-azure.sh [demo|launch|auth|rehearse|listen-audio|ask|stt|tts] [agent args...]
+  scripts/run-agent-azure.sh [demo|launch|voice|auth|rehearse|listen-audio|ask|stt|tts] [agent args...]
 
 Examples:
   scripts/run-agent-azure.sh auth
   GOOGLE_MEET_URL="https://meet.google.com/xxx-yyyy-zzz" PRODUCT_URL="https://app.example.com" scripts/run-agent-azure.sh demo
   scripts/run-agent-azure.sh launch "https://meet.google.com/xxx-yyyy-zzz"
+  scripts/run-agent-azure.sh voice "https://meet.google.com/xxx-yyyy-zzz"
   scripts/run-agent-azure.sh ask "How does inventory sync work?"
 
 Environment:
@@ -207,7 +208,7 @@ validate_environment() {
       [[ -n "${PRODUCT_URL:-}" ]] || die "PRODUCT_URL is required. Export it or set it in $ENV_FILE."
       [[ -n "${GOOGLE_MEET_URL:-}" ]] || die "GOOGLE_MEET_URL is required. Export it or set it in $ENV_FILE."
       ;;
-    launch)
+    launch|voice)
       [[ -n "${SARVAM_API_KEY:-}" ]] || die "SARVAM_API_KEY is required. Export it or set it in $ENV_FILE."
       [[ -n "${PRODUCT_URL:-}" ]] || die "PRODUCT_URL is required. Export it or set it in $ENV_FILE."
       ;;
@@ -247,6 +248,14 @@ run_agent() {
         set -- "$GOOGLE_MEET_URL"
       fi
       npm run agent -- launch "$@" --listen-audio
+      ;;
+    voice)
+      shift || true
+      if [[ "$#" -eq 0 ]]; then
+        [[ -n "${GOOGLE_MEET_URL:-}" ]] || die "Pass a Meet link or set GOOGLE_MEET_URL before running voice."
+        set -- "$GOOGLE_MEET_URL"
+      fi
+      AGENT_MULTILINGUAL=true SARVAM_STT_LANGUAGE_CODE=unknown npm run agent -- voice "$@" --listen-audio
       ;;
     rehearse)
       npm run rehearse
