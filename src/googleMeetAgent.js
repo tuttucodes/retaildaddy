@@ -311,7 +311,9 @@ export class GoogleMeetAgent {
     const markers = [
       this.meetPage.getByRole("button", { name: /leave call|leave/i }).first(),
       this.meetPage.getByRole("button", { name: /present now|present/i }).first(),
-      this.meetPage.getByText(/you are in the meeting|meeting details/i).first()
+      this.meetPage.getByText(/you are in the meeting|meeting details/i).first(),
+      this.meetPage.getByText(/camera not found/i).first(),
+      this.meetPage.getByText(/microphone not found/i).first()
     ];
 
     const blockedMarkers = [
