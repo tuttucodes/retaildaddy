@@ -13,7 +13,7 @@ import { assertPreflightReady, formatPreflightReport, runPreflight } from "./pre
 function usage() {
   console.log(`Usage:
   npm run agent -- auth
-  npm run agent -- launch "https://meet.google.com/xxx-yyyy-zzz" [--product http://localhost:3000] [--listen-audio] [--manual-present]
+  npm run agent -- launch "https://meet.google.com/xxx-yyyy-zzz" [--product http://localhost:3000] [--listen-audio] [--manual-present] [--system-audio]
   npm run agent -- doctor [rehearse|demo|launch]
   npm run rehearse
   npm run demo
@@ -29,7 +29,8 @@ function parseLaunchArgs(args) {
     meetUrl: "",
     productUrl: "",
     listenAudio: false,
-    autoPresent: true
+    autoPresent: true,
+    browserAudio: true
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -43,6 +44,10 @@ function parseLaunchArgs(args) {
       options.autoPresent = true;
     } else if (value === "--manual-present") {
       options.autoPresent = false;
+    } else if (value === "--browser-audio") {
+      options.browserAudio = true;
+    } else if (value === "--system-audio") {
+      options.browserAudio = false;
     } else if (!options.meetUrl) {
       options.meetUrl = value;
     }
@@ -115,6 +120,7 @@ async function main() {
     config.browser.meetUrl = launchOptions.meetUrl;
     if (launchOptions.productUrl) config.browser.productUrl = launchOptions.productUrl;
     if (launchOptions.autoPresent != null) config.browser.autoPresent = launchOptions.autoPresent;
+    config.audio.browserPlayback = launchOptions.browserAudio;
 
     assertReady(config, config.browser.autoPresent ? "launch" : "demo");
     const orchestrator = new DemoOrchestrator({ config, logger });

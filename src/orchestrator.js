@@ -3,7 +3,7 @@ import process from "node:process";
 import { SarvamClient } from "./sarvamClient.js";
 import { DemoBrain } from "./brain.js";
 import { loadDemoScript, loadProductKnowledge, findStepForQuestion } from "./demoScript.js";
-import { createAudioFilePath, playAudio } from "./audioPlayer.js";
+import { createAudioFilePath, playAudio, playAudioInBrowser } from "./audioPlayer.js";
 import { watchAudioInbox } from "./audioInbox.js";
 import { startAudioCapture } from "./audioCapture.js";
 import { ProductDemoController } from "./productDemoController.js";
@@ -41,7 +41,11 @@ export class DemoOrchestrator {
       speaker: this.config.sarvam.ttsSpeaker,
       pace: this.config.sarvam.ttsPace
     });
-    await playAudio(audioPath, this.config.audio.playCommand);
+    if (this.config.audio.browserPlayback && this.demoController?.page) {
+      await playAudioInBrowser(this.demoController.page, audioPath);
+    } else {
+      await playAudio(audioPath, this.config.audio.playCommand);
+    }
     return audioPath;
   }
 

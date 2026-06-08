@@ -42,12 +42,6 @@ const LAUNCH_REQUIREMENTS = Object.freeze([
     configPath: "browser.autoPresent",
     requiredValue: true,
     message: "Set MEET_AUTO_PRESENT=true for launch mode so the agent attempts screen sharing."
-  },
-  {
-    key: "AUDIO_CAPTURE_COMMAND",
-    configPath: "audio.captureCommand",
-    message:
-      "Set AUDIO_CAPTURE_COMMAND to the command that records client audio into AUDIO_INPUT_DIR for Sarvam STT."
   }
 ]);
 
@@ -316,6 +310,20 @@ export function runPreflight(config, { mode = "rehearse", cwd = process.cwd() } 
     ...validateRequiredConfig(config, { mode: normalizedMode }),
     ...validateDemoAssets(config, { cwd })
   ];
+
+  if (normalizedMode === "launch" && !hasValue(getConfigValue(config, "audio.captureCommand"))) {
+    issues.push(
+      issue({
+        severity: "warning",
+        source: "config",
+        key: "AUDIO_CAPTURE_COMMAND",
+        configPath: "audio.captureCommand",
+        message:
+          "AUDIO_CAPTURE_COMMAND is not set, so automatic spoken client Q&A will be disabled. Typed Q&A and scripted narration still work."
+      })
+    );
+  }
+
   const errors = issues.filter((preflightIssue) => preflightIssue.severity === "error");
   const warnings = issues.filter((preflightIssue) => preflightIssue.severity === "warning");
 

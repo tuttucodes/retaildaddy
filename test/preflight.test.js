@@ -81,8 +81,7 @@ describe("preflight mode requirements", () => {
       "DEMO_SCRIPT_PATH",
       "PRODUCT_KB_PATH",
       "GOOGLE_MEET_URL",
-      "MEET_AUTO_PRESENT",
-      "AUDIO_CAPTURE_COMMAND"
+      "MEET_AUTO_PRESENT"
     ]);
   });
 
@@ -104,7 +103,22 @@ describe("preflight mode requirements", () => {
     assert.match(missing, /SARVAM_API_KEY/);
     assert.match(missing, /GOOGLE_MEET_URL/);
     assert.match(missing, /MEET_AUTO_PRESENT=true/);
-    assert.match(missing, /AUDIO_CAPTURE_COMMAND/);
+  });
+
+  it("warns but does not fail launch mode when audio capture is missing", () => {
+    const config = validConfig({
+      config: {
+        audio: { captureCommand: "" }
+      }
+    });
+
+    const result = runPreflight(config, { mode: "launch" });
+
+    assert.equal(result.ready, true);
+    assert.match(
+      result.warnings.map((preflightIssue) => preflightIssue.message).join("\n"),
+      /automatic spoken client Q&A will be disabled/
+    );
   });
 
   it("does not require launch-only config in demo mode", () => {

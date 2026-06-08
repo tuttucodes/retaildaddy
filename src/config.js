@@ -91,7 +91,8 @@ export function loadConfig() {
     audio: {
       playCommand: process.env.AUDIO_PLAY_COMMAND || "",
       captureCommand: process.env.AUDIO_CAPTURE_COMMAND || "",
-      autoListen: boolFromEnv("AUDIO_AUTO_LISTEN", false)
+      autoListen: boolFromEnv("AUDIO_AUTO_LISTEN", false),
+      browserPlayback: boolFromEnv("BROWSER_AUDIO_PLAYBACK", false)
     }
   };
 }
