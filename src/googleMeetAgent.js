@@ -571,6 +571,46 @@ export class GoogleMeetAgent {
       }
     }
 
+    const clickedLabel = await this.meetPage
+      .evaluate(() => {
+        const isVisible = (element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
+        const allowedLabels = new Set(["got it", "continue", "dismiss", "ok"]);
+        const buttons = Array.from(document.querySelectorAll("button,[role='button']"));
+        for (const button of buttons) {
+          const label = [
+            button.getAttribute("aria-label"),
+            button.getAttribute("data-tooltip"),
+            button.getAttribute("title"),
+            button.textContent
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (isVisible(button) && allowedLabels.has(label.toLowerCase())) {
+            button.click();
+            return label;
+          }
+        }
+        return "";
+      })
+      .catch(() => "");
+
+    if (clickedLabel) {
+      this.logger.info(`Dismissed Meet notice dialog through DOM fallback: ${clickedLabel}.`);
+      await this.meetPage.waitForTimeout(500);
+      return true;
+    }
+
     return false;
   }
 
