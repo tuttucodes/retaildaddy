@@ -1,0 +1,20 @@
+{
+  "name": "retaildaddy-meet-demo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI demo agent that can join Google Meet, run a SaaS product walkthrough, speak with Sarvam TTS, and answer questions with Sarvam STT/chat.",
+  "scripts": {
+    "agent": "node src/index.js",
+    "launch": "node src/index.js launch",
+    "rehearse": "node src/index.js rehearse",
+    "demo": "node src/index.js demo",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "^1.53.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

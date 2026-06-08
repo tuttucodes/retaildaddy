@@ -1,0 +1,56 @@
+{
+  "title": "RetailDaddy SaaS Demo",
+  "language": "en-IN",
+  "opening": "Hello, I am the RetailDaddy AI demo assistant. I will walk you through the product and answer questions as we go.",
+  "closing": "That is the end of the core walkthrough. I can now answer questions about setup, pricing, integrations, workflows, or anything you want to inspect again.",
+  "steps": [
+    {
+      "id": "dashboard",
+      "title": "Dashboard overview",
+      "say": "We will start on the dashboard. This gives a quick view of sales, inventory health, low stock alerts, and pending actions.",
+      "action": {
+        "type": "navigate",
+        "url": "/"
+      },
+      "highlight": "[data-demo='dashboard-summary'], main, body",
+      "zoom": 1.0,
+      "keywords": ["dashboard", "overview", "summary", "analytics"]
+    },
+    {
+      "id": "inventory",
+      "title": "Inventory tracking",
+      "say": "Next, I will show inventory tracking. This is where store teams can monitor SKU availability, reorder points, and stock movement.",
+      "action": {
+        "type": "navigate",
+        "url": "/inventory"
+      },
+      "highlight": "[data-demo='inventory-table'], table, main",
+      "zoom": 1.12,
+      "keywords": ["inventory", "stock", "sku", "reorder", "warehouse"]
+    },
+    {
+      "id": "orders",
+      "title": "Order management",
+      "say": "Here is order management. The flow is designed to reduce manual follow-up and make exceptions easy to spot.",
+      "action": {
+        "type": "navigate",
+        "url": "/orders"
+      },
+      "highlight": "[data-demo='orders-list'], table, main",
+      "zoom": 1.08,
+      "keywords": ["orders", "fulfillment", "returns", "payments"]
+    },
+    {
+      "id": "reports",
+      "title": "Reports",
+      "say": "Finally, reports help owners and operators compare store performance, identify fast-moving products, and catch margin leakage.",
+      "action": {
+        "type": "navigate",
+        "url": "/reports"
+      },
+      "highlight": "[data-demo='reports'], main, body",
+      "zoom": 1.0,
+      "keywords": ["reports", "analytics", "margin", "sales", "performance"]
+    }
+  ]
+}

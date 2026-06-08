@@ -1,0 +1,86 @@
+{
+  "title": "RetailDaddy Live SaaS Demo",
+  "language": "en-IN",
+  "opening": "Hello, I am the RetailDaddy AI demo assistant. I will walk through the product, show the important workflows on screen, and answer questions as they come up.",
+  "closing": "That completes the core RetailDaddy walkthrough. I can now revisit any feature, answer implementation questions, or go deeper on workflows that matter to your team.",
+  "steps": [
+    {
+      "id": "dashboard",
+      "title": "Operations dashboard",
+      "say": "We will start with the operations dashboard. This view gives owners and managers a quick read on sales, stock health, pending orders, and alerts that need attention.",
+      "action": {
+        "type": "navigate",
+        "url": "/"
+      },
+      "highlight": "[data-demo='dashboard-summary'], [data-demo='daily-ops'], main",
+      "zoom": 1.05,
+      "pauseMs": 1200,
+      "keywords": ["dashboard", "summary", "daily ops", "overview", "alerts", "sales snapshot"]
+    },
+    {
+      "id": "inventory",
+      "title": "Inventory tracking",
+      "say": "Inventory tracking helps store teams monitor SKU availability, spot low stock, and understand where stock movement is happening before it becomes an operational issue.",
+      "action": {
+        "type": "navigate",
+        "url": "/inventory"
+      },
+      "highlight": "[data-demo='inventory-table'], [data-demo='low-stock-alerts'], table, main",
+      "zoom": 1.12,
+      "pauseMs": 1400,
+      "keywords": ["inventory", "stock", "sku", "reorder", "low stock", "warehouse", "availability"]
+    },
+    {
+      "id": "orders",
+      "title": "Order management",
+      "say": "The order management view is built to reduce manual follow-up. Teams can see order status, fulfillment exceptions, payment state, and returns from one workflow.",
+      "action": {
+        "type": "navigate",
+        "url": "/orders"
+      },
+      "highlight": "[data-demo='orders-list'], [data-demo='order-status'], table, main",
+      "zoom": 1.1,
+      "pauseMs": 1400,
+      "keywords": ["orders", "fulfillment", "returns", "payments", "status", "dispatch", "exceptions"]
+    },
+    {
+      "id": "catalog",
+      "title": "Product catalog",
+      "say": "The catalog keeps product data organized so teams can manage pricing, product details, categories, and SKU-level information from a single place.",
+      "action": {
+        "type": "navigate",
+        "url": "/catalog"
+      },
+      "highlight": "[data-demo='catalog-grid'], [data-demo='product-form'], main",
+      "zoom": 1.08,
+      "pauseMs": 1200,
+      "keywords": ["catalog", "products", "pricing", "categories", "product details", "variants"]
+    },
+    {
+      "id": "reports",
+      "title": "Reports and performance",
+      "say": "Reports help operators compare store performance, identify fast-moving products, review margins, and make decisions using current operational data.",
+      "action": {
+        "type": "navigate",
+        "url": "/reports"
+      },
+      "highlight": "[data-demo='reports'], [data-demo='margin-report'], [data-demo='sales-chart'], main",
+      "zoom": 1.06,
+      "pauseMs": 1400,
+      "keywords": ["reports", "analytics", "margin", "sales", "performance", "fast moving", "store comparison"]
+    },
+    {
+      "id": "integrations",
+      "title": "Integrations and setup",
+      "say": "For implementation, this area is where the demo should show how RetailDaddy connects with existing systems and how teams configure the operating workflow.",
+      "action": {
+        "type": "navigate",
+        "url": "/settings/integrations"
+      },
+      "highlight": "[data-demo='integrations'], [data-demo='setup-checklist'], main",
+      "zoom": 1.08,
+      "pauseMs": 1200,
+      "keywords": ["integrations", "setup", "implementation", "onboarding", "pos", "erp", "configuration"]
+    }
+  ]
+}
