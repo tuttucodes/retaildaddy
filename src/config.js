@@ -90,6 +90,8 @@ export function loadConfig() {
       autoPresent: boolFromEnv("MEET_AUTO_PRESENT", false),
       desktopCaptureSource: process.env.DESKTOP_CAPTURE_SOURCE || "RetailDaddy Agent Stage",
       stageTitle: process.env.AGENT_STAGE_TITLE || process.env.DESKTOP_CAPTURE_SOURCE || "RetailDaddy Agent Stage",
+      viewportWidth: numberFromEnv("BROWSER_VIEWPORT_WIDTH", 1920),
+      viewportHeight: numberFromEnv("BROWSER_VIEWPORT_HEIGHT", 1080),
       headless: boolFromEnv("HEADLESS", false)
     },
     audio: {

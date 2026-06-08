@@ -7,7 +7,7 @@ COMMAND="${1:-demo}"
 ENV_FILE="${ENV_FILE:-$PROJECT_DIR/.env}"
 DISPLAY="${DISPLAY:-:99}"
 XVFB_SCREEN="${XVFB_SCREEN:-0}"
-XVFB_RESOLUTION="${XVFB_RESOLUTION:-1440x960x24}"
+XVFB_RESOLUTION="${XVFB_RESOLUTION:-1920x1080x24}"
 XVFB_LOG="${XVFB_LOG:-/tmp/retaildaddy-xvfb.log}"
 PULSE_LOG="${PULSE_LOG:-/tmp/retaildaddy-pulseaudio.log}"
 PULSE_MIC_SINK_NAME="${PULSE_MIC_SINK_NAME:-retaildaddy_agent_mic_sink}"
@@ -45,7 +45,9 @@ Environment:
   PRODUCT_URL              Required for live product demo
   GOOGLE_MEET_URL          Required for demo
   DISPLAY                  Defaults to :99
-  XVFB_RESOLUTION          Defaults to 1440x960x24
+  XVFB_RESOLUTION          Defaults to 1920x1080x24
+  BROWSER_VIEWPORT_WIDTH   Defaults to 1920
+  BROWSER_VIEWPORT_HEIGHT  Defaults to 1080
   MEET_AUTO_PRESENT        Defaults to true in this Azure wrapper
   DESKTOP_CAPTURE_SOURCE   Defaults to "Entire screen" in this Azure wrapper
   PULSE_MIC_SINK_NAME      Defaults to retaildaddy_agent_mic_sink
@@ -228,6 +230,8 @@ run_agent() {
   export DESKTOP_CAPTURE_SOURCE="${DESKTOP_CAPTURE_SOURCE:-Entire screen}"
   export AGENT_STAGE_TITLE="${AGENT_STAGE_TITLE:-RetailDaddy Agent Stage}"
   export MEET_AUTO_PRESENT="${MEET_AUTO_PRESENT:-true}"
+  export BROWSER_VIEWPORT_WIDTH="${BROWSER_VIEWPORT_WIDTH:-1920}"
+  export BROWSER_VIEWPORT_HEIGHT="${BROWSER_VIEWPORT_HEIGHT:-1080}"
 
   mkdir -p "${AUDIO_OUT_DIR:-$PROJECT_DIR/audio-out}" "${AUDIO_INPUT_DIR:-$PROJECT_DIR/recordings}"
 

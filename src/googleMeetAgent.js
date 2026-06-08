@@ -16,7 +16,10 @@ export class GoogleMeetAgent {
 
     this.context = await chromium.launchPersistentContext(profileDir, {
       headless: this.config.browser.headless,
-      viewport: { width: 1440, height: 960 },
+      viewport: {
+        width: this.config.browser.viewportWidth,
+        height: this.config.browser.viewportHeight
+      },
       args: browserArgs
     });
 
@@ -31,8 +34,11 @@ export class GoogleMeetAgent {
       "--use-fake-ui-for-media-stream",
       "--enable-usermedia-screen-capturing",
       "--autoplay-policy=no-user-gesture-required",
-      "--window-size=1440,960",
+      `--window-size=${this.config.browser.viewportWidth},${this.config.browser.viewportHeight}`,
+      "--start-maximized",
       "--no-first-run",
+      "--hide-crash-restore-bubble",
+      "--disable-session-crashed-bubble",
       `--auto-select-desktop-capture-source=${this.config.browser.desktopCaptureSource}`,
       `--auto-select-tab-capture-source-by-title=${this.config.browser.stageTitle}`
     ];
@@ -58,7 +64,10 @@ export class GoogleMeetAgent {
   async openProduct() {
     if (!this.context) await this.launch();
     this.productPage = await this.context.newPage();
-    await this.productPage.setViewportSize({ width: 1440, height: 960 });
+    await this.productPage.setViewportSize({
+      width: this.config.browser.viewportWidth,
+      height: this.config.browser.viewportHeight
+    });
     await this.productPage.goto(this.config.browser.productUrl, { waitUntil: "domcontentloaded" });
     await this.prepareProductStage();
     return this.productPage;
