@@ -11,6 +11,7 @@ import { ProductDemoController } from "./productDemoController.js";
 import { GoogleMeetAgent } from "./googleMeetAgent.js";
 import { requireSarvamKey } from "./config.js";
 import { BargeInController } from "./speech/bargeInController.js";
+import { withRetry } from "./util/retry.js";
 
 const DUPLICATE_TRANSCRIPT_WINDOW_MS = 20_000;
 const AGENT_ECHO_WINDOW_MS = 90_000;
@@ -248,6 +249,18 @@ export class DemoOrchestrator {
     return this.questionQueue;
   }
 
+  buildJoinIntro() {
+    return "Hi everyone, thanks for hopping on. I'm from the RetailDaddy team — give me one second and I'll share my screen and walk you through it.";
+  }
+
+  async joinMeetWithRetry({ autoPresent } = {}) {
+    const retries = this.config.meet?.joinRetries ?? 1;
+    await withRetry(
+      () => this.meetAgent.joinMeet({ autoPresent }),
+      { retries, baseDelayMs: 1500, onRetry: (n, e) => this.logger.warn(`Meet join retry ${n}: ${e.message}`) }
+    );
+  }
+
   async prepareDemoSession({ withMeet = false, autoPresent } = {}) {
     requireSarvamKey(this.config);
     let productPage;
@@ -255,7 +268,7 @@ export class DemoOrchestrator {
     if (withMeet) {
       await this.meetAgent.launch();
       productPage = await this.meetAgent.openProduct();
-      await this.meetAgent.joinMeet({ autoPresent });
+      await this.joinMeetWithRetry({ autoPresent });
     } else {
       await this.meetAgent.launch();
       productPage = await this.meetAgent.openProduct();
@@ -419,6 +432,7 @@ export class DemoOrchestrator {
   async runConfirmedLiveDemo({ listenAudio = true } = {}) {
     requireSarvamKey(this.config);
     await this.prepareDemoSession({ withMeet: true, autoPresent: false });
+    await this.speak(this.buildJoinIntro(), "join-intro");
 
     let confirmed = false;
     let resolveConfirmation;
