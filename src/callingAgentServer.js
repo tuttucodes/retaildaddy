@@ -23,6 +23,7 @@ import {
   publicWebSocketUrl,
   recordOnlyTwiml
 } from "./twilioTelephony.js";
+import { validateTwilioSignature } from "./twilioSignature.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -156,6 +157,21 @@ function safeStaticPath(baseDir, urlPath) {
   const absolutePath = path.resolve(baseDir, `.${decoded}`);
   if (!isInside(baseDir, absolutePath)) return "";
   return absolutePath;
+}
+
+/**
+ * Reconstruct the exact URL Twilio signed (public base + path + query) and
+ * validate the X-Twilio-Signature header.  Returns false when validation is
+ * disabled via TWILIO_VALIDATE_SIGNATURE=false.
+ */
+function checkTwilioSignature({ request, url, params, publicBaseUrl, authToken, validateSignature }) {
+  if (!validateSignature) return true;
+  const signatureHeader = String(request.headers["x-twilio-signature"] || "");
+  // Reconstruct the full URL exactly as Twilio signed it.
+  const base = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+  const query = url.search || "";
+  const signedUrl = `${base}${url.pathname}${query}`;
+  return validateTwilioSignature({ signatureHeader, url: signedUrl, params, authToken });
 }
 
 export function createCallingAgentServer({
@@ -303,9 +319,8 @@ export function createCallingAgentServer({
     sendJson(response, 200, result);
   }
 
-  async function handleTwilioRecording(request, response, callId) {
+  async function handleTwilioRecording(response, form, callId) {
     const turnStartedAt = Date.now();
-    const form = await readFormBody(request);
     const recordingUrl = form.RecordingUrl || form.recordingUrl || "";
     const session = agent.getSession(callId);
     logger.info(
@@ -314,6 +329,25 @@ export function createCallingAgentServer({
 
     if (!recordingUrl) {
       sendTwilioListenOnly(response, session);
+      return;
+    }
+
+    // SSRF guard: only fetch from api.twilio.com.
+    let parsedRecordingUrl;
+    try {
+      parsedRecordingUrl = new URL(recordingUrl);
+    } catch {
+      logger.error(`Twilio recording callback for ${callId}: invalid RecordingUrl — rejected.`);
+      response.writeHead(400, { "Content-Type": "text/plain" });
+      response.end("Bad Request: invalid RecordingUrl");
+      return;
+    }
+    if (parsedRecordingUrl.hostname !== "api.twilio.com") {
+      logger.error(
+        `Twilio recording callback for ${callId}: RecordingUrl hostname "${parsedRecordingUrl.hostname}" is not api.twilio.com — rejected.`
+      );
+      response.writeHead(400, { "Content-Type": "text/plain" });
+      response.end("Bad Request: RecordingUrl must be on api.twilio.com");
       return;
     }
 
@@ -377,6 +411,17 @@ export function createCallingAgentServer({
       }
 
       if (request.method === "POST" && url.pathname === "/twilio/voice") {
+        const form = await readFormBody(request);
+        if (!checkTwilioSignature({
+          request, url, params: form,
+          publicBaseUrl: config.calling.publicBaseUrl,
+          authToken: twilioConfig.authToken,
+          validateSignature: config.calling.validateSignature
+        })) {
+          response.writeHead(403, { "Content-Type": "text/plain" });
+          response.end("Forbidden: invalid Twilio signature");
+          return;
+        }
         const callId = url.searchParams.get("callId") || "";
         let session;
         try {
@@ -384,8 +429,6 @@ export function createCallingAgentServer({
           session = agent.getSession(callId);
         } catch {
           // Inbound call: Twilio posts with no callId query param.
-          // Parse the form body and create a fresh inbound session.
-          const form = await readFormBody(request);
           const started = await agent.startCall({
             callerPhone: String(form.From || "").trim(),
             callerName: "",
@@ -401,14 +444,35 @@ export function createCallingAgentServer({
       }
 
       if (request.method === "POST" && url.pathname === "/twilio/recording") {
+        const form = await readFormBody(request);
+        if (!checkTwilioSignature({
+          request, url, params: form,
+          publicBaseUrl: config.calling.publicBaseUrl,
+          authToken: twilioConfig.authToken,
+          validateSignature: config.calling.validateSignature
+        })) {
+          response.writeHead(403, { "Content-Type": "text/plain" });
+          response.end("Forbidden: invalid Twilio signature");
+          return;
+        }
         const callId = url.searchParams.get("callId") || "";
-        await handleTwilioRecording(request, response, callId);
+        await handleTwilioRecording(response, form, callId);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/twilio/status") {
-        const callId = url.searchParams.get("callId") || "";
         const form = await readFormBody(request);
+        if (!checkTwilioSignature({
+          request, url, params: form,
+          publicBaseUrl: config.calling.publicBaseUrl,
+          authToken: twilioConfig.authToken,
+          validateSignature: config.calling.validateSignature
+        })) {
+          response.writeHead(403, { "Content-Type": "text/plain" });
+          response.end("Forbidden: invalid Twilio signature");
+          return;
+        }
+        const callId = url.searchParams.get("callId") || "";
         if (callId && form.CallStatus === "completed") {
           await agent.endCall(callId).catch(() => {});
         }

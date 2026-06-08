@@ -61,9 +61,10 @@ if (fs.existsSync(envPath)) {
   } else {
     updated = existing.endsWith("\n") ? existing + envLine + "\n" : existing + "\n" + envLine + "\n";
   }
-  fs.writeFileSync(envPath, updated, "utf8");
+  fs.writeFileSync(envPath, updated, { mode: 0o600, encoding: "utf8" });
+  fs.chmodSync(envPath, 0o600);
   console.log(`Refresh token written to ${envPath} as ${envKey}.`);
-  console.log("Verify the entry is correct, then restrict file permissions if needed (e.g. chmod 600 .env).");
+  console.log("File permissions set to 600 (owner read/write only).");
 } else {
   console.log("No .env file found in the current directory. Add the following line to your .env manually:\n");
   console.log(`  ${envLine}\n`);

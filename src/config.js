@@ -103,6 +103,7 @@ export function loadConfig() {
       streamFallbackTranscriptMs: numberFromEnv("CALL_STREAM_FALLBACK_TRANSCRIPT_MS", 900),
       streamTtsMinBufferSize: numberFromEnv("CALL_STREAM_TTS_MIN_BUFFER_SIZE", 20),
       streamTtsMaxChunkLength: numberFromEnv("CALL_STREAM_TTS_MAX_CHUNK_LENGTH", 90),
+      validateSignature: boolFromEnv("TWILIO_VALIDATE_SIGNATURE", true),
       goal:
         process.env.CALL_AGENT_GOAL ||
         "qualify retail store leads, answer RetailDaddy questions, capture the caller's need, and move interested callers toward a product demo or human follow-up"
