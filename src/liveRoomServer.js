@@ -145,14 +145,31 @@ function createLiveRoomServer({
   const tmpDir = path.resolve(process.env.LIVE_ROOM_TMP_DIR || path.join(PROJECT_ROOT, ".live-room-tmp"));
   const audioDir = path.resolve(config.paths.audioOutDir);
   const clients = new Map();
+  let nextEventId = 1;
 
   fs.mkdirSync(tmpDir, { recursive: true });
   fs.mkdirSync(audioDir, { recursive: true });
 
+  function pushClientEvent(client, event, payload) {
+    const item = {
+      id: nextEventId,
+      event,
+      payload
+    };
+    nextEventId += 1;
+    client.events.push(item);
+    if (client.events.length > 200) {
+      client.events.splice(0, client.events.length - 200);
+    }
+    if (client.response) {
+      client.response.write(`event: ${event}\ndata: ${safeJson(payload)}\n\n`);
+    }
+  }
+
   function broadcast(event, payload) {
     const body = `event: ${event}\ndata: ${safeJson(payload)}\n\n`;
     for (const client of clients.values()) {
-      client.response.write(body);
+      pushClientEvent(client, event, payload);
     }
   }
 
@@ -160,11 +177,43 @@ function createLiveRoomServer({
     const client = clients.get(clientId);
     if (!client) return false;
 
-    client.response.write(`event: ${event}\ndata: ${safeJson(payload)}\n\n`);
+    pushClientEvent(client, event, payload);
     return true;
   }
 
+  function upsertClient(clientId, { name = "Guest", phone = "", response = null } = {}) {
+    const existing = clients.get(clientId);
+    if (existing) {
+      existing.name = name || existing.name;
+      existing.phone = phone || existing.phone;
+      existing.response = response || existing.response;
+      existing.lastSeenAt = Date.now();
+      return existing;
+    }
+
+    const client = {
+      name,
+      phone,
+      response,
+      events: [],
+      joinedAt: Date.now(),
+      lastSeenAt: Date.now()
+    };
+    clients.set(clientId, client);
+    return client;
+  }
+
+  function pruneInactiveClients(maxIdleMs = 45_000) {
+    const now = Date.now();
+    for (const [clientId, client] of clients.entries()) {
+      if (!client.response && now - client.lastSeenAt > maxIdleMs) {
+        clients.delete(clientId);
+      }
+    }
+  }
+
   function participantList() {
+    pruneInactiveClients();
     return [
       {
         id: "ai-agent",
@@ -318,11 +367,81 @@ function createLiveRoomServer({
     } else {
       for (const [clientId, client] of clients.entries()) {
         if (clientId !== from) {
-          client.response.write(`event: signal\ndata: ${safeJson(payload)}\n\n`);
+          pushClientEvent(client, "signal", payload);
         }
       }
     }
 
+    sendJson(response, 200, { ok: true });
+  }
+
+  async function handleJoin(request, response) {
+    const body = await readJsonBody(request);
+    const clientId = String(body.clientId || crypto.randomUUID()).trim();
+    const name = String(body.name || "Guest").trim().slice(0, 80);
+    const phone = String(body.phone || "").trim().slice(0, 40);
+    const wasPresent = clients.has(clientId);
+    const client = upsertClient(clientId, { name, phone });
+
+    pushClientEvent(client, "room_status", {
+      roomName,
+      aiName,
+      aiPhone,
+      clientId,
+      participants: participantList()
+    });
+
+    if (!wasPresent) {
+      broadcast("participant_joined", {
+        id: clientId,
+        name,
+        phone,
+        isAi: false,
+        joinedAt: client.joinedAt,
+        participants: participantList()
+      });
+    }
+
+    sendJson(response, 200, {
+      ok: true,
+      roomName,
+      aiName,
+      aiPhone,
+      clientId,
+      cursor: nextEventId - 1,
+      participants: participantList()
+    });
+  }
+
+  function handlePoll(url, response) {
+    const clientId = String(url.searchParams.get("clientId") || "").trim();
+    const cursor = Number(url.searchParams.get("cursor") || 0);
+    const client = clients.get(clientId);
+    if (!client) {
+      sendJson(response, 404, { error: "client not joined" });
+      return;
+    }
+
+    client.lastSeenAt = Date.now();
+    const events = client.events.filter((item) => item.id > cursor);
+    sendJson(response, 200, {
+      cursor: events.length ? events[events.length - 1].id : cursor,
+      events
+    });
+  }
+
+  async function handleLeave(request, response) {
+    const body = await readJsonBody(request);
+    const clientId = String(body.clientId || "").trim();
+    if (clientId) {
+      const client = clients.get(clientId);
+      if (client?.response) client.response.end();
+      clients.delete(clientId);
+      broadcast("participant_left", {
+        id: clientId,
+        participants: participantList()
+      });
+    }
     sendJson(response, 200, { ok: true });
   }
 
@@ -338,20 +457,18 @@ function createLiveRoomServer({
       Connection: "keep-alive"
     });
     response.flushHeaders?.();
-    const client = {
+    const client = upsertClient(clientId, {
       response,
       name,
-      phone,
-      joinedAt: Date.now()
-    };
-    clients.set(clientId, client);
+      phone
+    });
     response.write(
       `event: room_status\ndata: ${safeJson({
         roomName,
         aiName,
         aiPhone,
         clientId,
-        participants: participantList()
+      participants: participantList()
       })}\n\n`
     );
     const heartbeat = setInterval(() => {
@@ -367,7 +484,8 @@ function createLiveRoomServer({
     });
     request.on("close", () => {
       clearInterval(heartbeat);
-      clients.delete(clientId);
+      const current = clients.get(clientId);
+      if (current) current.response = null;
       broadcast("participant_left", {
         id: clientId,
         participants: participantList()
@@ -415,6 +533,18 @@ function createLiveRoomServer({
       }
       if (request.method === "GET" && url.pathname === "/events") {
         handleEvents(request, response, url);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/join") {
+        await handleJoin(request, response);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/poll") {
+        handlePoll(url, response);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/leave") {
+        await handleLeave(request, response);
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/signal") {

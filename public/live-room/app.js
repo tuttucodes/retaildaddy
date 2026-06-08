@@ -5,7 +5,8 @@ const state = {
   localStream: null,
   cameraTrack: null,
   screenTrack: null,
-  eventSource: null,
+  polling: false,
+  cursor: 0,
   peers: new Map(),
   participants: new Map(),
   answerIds: new Set(),
@@ -166,19 +167,29 @@ async function ensureLocalMedia() {
   return state.localStream;
 }
 
-function connectEvents() {
-  const params = new URLSearchParams({
-    clientId: state.clientId,
-    name: state.name,
-    phone: state.phone
-  });
-  state.eventSource = new EventSource(`/events?${params.toString()}`);
-  state.eventSource.onopen = () => {
-    setStatus(`Connected as ${state.name}`);
-  };
+async function connectEvents() {
+  setStatus("Connecting room...");
+  const joined = await fetch("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: state.clientId,
+      name: state.name,
+      phone: state.phone
+    })
+  }).then((response) => response.json());
 
-  state.eventSource.addEventListener("room_status", (event) => {
-    const data = JSON.parse(event.data);
+  if (!joined.ok) {
+    throw new Error(joined.error || "Room join failed");
+  }
+  state.cursor = joined.cursor || 0;
+  processRoomEvent("room_status", joined);
+  state.polling = true;
+  pollRoomEvents();
+}
+
+function processRoomEvent(eventName, data) {
+  if (eventName === "room_status") {
     els.aiName.textContent = data.aiName || "RetailDaddy AI";
     els.aiPhone.textContent = data.aiPhone || "+91 AI Demo";
     setStatus(`Joined as ${state.name}`);
@@ -195,10 +206,10 @@ function connectEvents() {
       micMuted: !state.micEnabled
     });
     renderParticipants();
-  });
+    return;
+  }
 
-  state.eventSource.addEventListener("participant_joined", async (event) => {
-    const data = JSON.parse(event.data);
+  if (eventName === "participant_joined") {
     for (const participant of data.participants || []) {
       state.participants.set(participant.id, {
         ...(state.participants.get(participant.id) || {}),
@@ -208,37 +219,66 @@ function connectEvents() {
     renderParticipants();
     if (data.id && data.id !== state.clientId) {
       const pc = createPeer(data.id);
-      await makeOffer(data.id, pc);
+      makeOffer(data.id, pc).catch((error) => {
+        addMessage("agent", `WebRTC offer error: ${error.message}`, "System");
+      });
     }
-  });
+    return;
+  }
 
-  state.eventSource.addEventListener("participant_left", (event) => {
-    const data = JSON.parse(event.data);
+  if (eventName === "participant_left") {
     const peer = state.peers.get(data.id);
     if (peer) peer.close();
     state.peers.delete(data.id);
     state.participants.delete(data.id);
     renderParticipants();
-  });
+    return;
+  }
 
-  state.eventSource.addEventListener("signal", (event) => {
-    handleSignal(JSON.parse(event.data)).catch((error) => {
+  if (eventName === "signal") {
+    handleSignal(data).catch((error) => {
       addMessage("agent", `WebRTC signal error: ${error.message}`, "System");
     });
-  });
+    return;
+  }
 
-  state.eventSource.addEventListener("user_transcript", (event) => {
-    const data = JSON.parse(event.data);
+  if (eventName === "user_transcript") {
     addMessage("user", data.transcript, data.source === "text" ? "Typed question" : "Voice transcript");
-  });
+    return;
+  }
 
-  state.eventSource.addEventListener("agent_answer", (event) => {
-    handleAgentAnswer(JSON.parse(event.data));
-  });
+  if (eventName === "agent_answer") {
+    handleAgentAnswer(data);
+  }
+}
 
-  state.eventSource.onerror = () => {
-    setStatus("Room event stream reconnecting...");
-  };
+async function pollRoomEvents() {
+  while (state.polling) {
+    try {
+      const params = new URLSearchParams({
+        clientId: state.clientId,
+        cursor: String(state.cursor)
+      });
+      const result = await fetch(`/api/poll?${params.toString()}`).then((response) => response.json());
+      if (result.error) {
+        setStatus(`Room polling error: ${result.error}`);
+        await wait(1000);
+        continue;
+      }
+      state.cursor = result.cursor ?? state.cursor;
+      for (const item of result.events || []) {
+        processRoomEvent(item.event, item.payload);
+      }
+      await wait((result.events || []).length ? 120 : 500);
+    } catch {
+      setStatus("Room polling reconnecting...");
+      await wait(1200);
+    }
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function createPeer(remoteId) {
@@ -500,11 +540,16 @@ async function joinRoom() {
   setStatus("Opening devices...");
   await ensureLocalMedia();
   showStageStream(state.localStream);
-  connectEvents();
+  await connectEvents();
 }
 
 function leaveRoom() {
-  state.eventSource?.close();
+  state.polling = false;
+  fetch("/api/leave", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: state.clientId })
+  }).catch(() => {});
   for (const pc of state.peers.values()) pc.close();
   for (const track of state.localStream?.getTracks() || []) track.stop();
   if (state.vadTimer) cancelAnimationFrame(state.vadTimer);
