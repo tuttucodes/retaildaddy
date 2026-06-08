@@ -117,6 +117,7 @@ export class GoogleMeetAgent {
     await this.meetPage.goto(this.config.browser.meetUrl, { waitUntil: "domcontentloaded" });
     await this.meetPage.waitForTimeout(1500);
     await this.logMediaDeviceDiagnostics("loaded");
+    await this.saveMeetDiagnostics("loaded");
 
     await this.enterMeetingCodeFromHomeIfNeeded();
     await this.dismissPrejoinToggles();
@@ -341,6 +342,7 @@ export class GoogleMeetAgent {
         if (/companion/i.test(label || "")) continue;
         await button.click({ timeout: 5000 });
         this.logger.info(`Clicked Meet join button${label ? `: ${label.trim()}` : "."}`);
+        await this.saveMeetDiagnostics("join-clicked");
         return await this.waitForMeetRoom();
       } catch {
         // Try next candidate.
