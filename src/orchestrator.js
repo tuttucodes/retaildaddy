@@ -183,4 +183,8 @@ export class DemoOrchestrator {
       }
     }
   }
+
+  async close() {
+    await this.meetAgent.close();
+  }
 }

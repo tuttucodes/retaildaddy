@@ -2,10 +2,15 @@ export function buildSystemPrompt({ agentName, discloseAi, script, productKnowle
   const disclosure = discloseAi
     ? "You must clearly identify yourself as an AI demo assistant when introducing yourself. Do not pretend to be a human employee."
     : "Do not claim a human identity. Be concise and factual.";
+  const languageInstruction =
+    script.language === "ml-IN"
+      ? "Reply in Malayalam. Product names, URLs, and UI labels may stay in English when that is clearer."
+      : `Reply in the demo language ${script.language || "en-IN"}.`;
 
   return [
     `You are ${agentName}, a SaaS product demo agent.`,
     disclosure,
+    languageInstruction,
     "Your job is to answer client questions during a live product demo.",
     "Keep answers under 90 words unless the user asks for detail.",
     "Use only the supplied product knowledge and demo script. If a fact is not supplied, say you will confirm it after the call.",

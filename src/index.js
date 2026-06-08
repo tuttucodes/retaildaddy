@@ -83,18 +83,26 @@ async function main() {
   if (command === "rehearse") {
     assertReady(config, "rehearse");
     const orchestrator = new DemoOrchestrator({ config, logger });
-    await orchestrator.runScriptedDemo({ withMeet: false });
-    await orchestrator.operatorLoop({ listenAudio: config.audio.autoListen });
+    try {
+      await orchestrator.runScriptedDemo({ withMeet: false });
+      await orchestrator.operatorLoop({ listenAudio: config.audio.autoListen });
+    } finally {
+      await orchestrator.close();
+    }
     return;
   }
 
   if (command === "demo") {
     assertReady(config, "demo");
     const orchestrator = new DemoOrchestrator({ config, logger });
-    await orchestrator.runScriptedDemo({ withMeet: true });
-    await orchestrator.operatorLoop({
-      listenAudio: config.audio.autoListen || Boolean(config.audio.captureCommand)
-    });
+    try {
+      await orchestrator.runScriptedDemo({ withMeet: true });
+      await orchestrator.operatorLoop({
+        listenAudio: config.audio.autoListen || Boolean(config.audio.captureCommand)
+      });
+    } finally {
+      await orchestrator.close();
+    }
     return;
   }
 
@@ -110,11 +118,15 @@ async function main() {
 
     assertReady(config, config.browser.autoPresent ? "launch" : "demo");
     const orchestrator = new DemoOrchestrator({ config, logger });
-    await orchestrator.runScriptedDemo({ withMeet: true });
-    await orchestrator.operatorLoop({
-      listenAudio:
-        launchOptions.listenAudio || config.audio.autoListen || Boolean(config.audio.captureCommand)
-    });
+    try {
+      await orchestrator.runScriptedDemo({ withMeet: true });
+      await orchestrator.operatorLoop({
+        listenAudio:
+          launchOptions.listenAudio || config.audio.autoListen || Boolean(config.audio.captureCommand)
+      });
+    } finally {
+      await orchestrator.close();
+    }
     return;
   }
 

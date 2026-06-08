@@ -83,6 +83,7 @@ export class SarvamClient {
       body: JSON.stringify({
         model: options.model || "sarvam-105b",
         messages,
+        reasoning_effort: options.reasoningEffort ?? null,
         temperature: options.temperature ?? 0.35,
         max_tokens: options.maxTokens ?? 600
       })

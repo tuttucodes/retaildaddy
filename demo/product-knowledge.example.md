@@ -1,31 +1,31 @@
 # RetailDaddy Product Knowledge
 
-RetailDaddy is a SaaS platform for retailers that centralizes store operations, inventory tracking, order management, and reporting.
+RetailDaddy retailers-നായി ഉള്ള ഒരു SaaS platform ആണ്. Store operations, inventory tracking, order management, reporting എന്നിവ ഒരിടത്ത് centralize ചെയ്യാൻ ഇത് സഹായിക്കുന്നു.
 
 ## Core Value
 
-- Reduce manual operational work for store teams.
-- Give owners a single place to see sales, stock, and exceptions.
-- Help managers catch low stock and fulfillment issues earlier.
+- Store teams ചെയ്യുന്ന manual operational work കുറയ്ക്കുക.
+- Owners-ന് sales, stock, exceptions എന്നിവ കാണാൻ single view നൽകുക.
+- Managers-ന് low stock, fulfillment issues എന്നിവ നേരത്തെ കണ്ടെത്താൻ സഹായിക്കുക.
 
 ## Demo Positioning
 
-The demo should be practical and workflow-driven. Avoid vague claims. Show where users would act inside the product.
+Demo practical ആയിരിക്കുക. Vague claims ഒഴിവാക്കുക. Product-ൽ users എവിടെ action എടുക്കും എന്ന് കാണിക്കുക.
 
 ## Common Questions
 
-### How does inventory sync work?
+### Inventory sync എങ്ങനെ work ചെയ്യും?
 
-Inventory data can be synced from the product catalog and adjusted through stock updates. If integrations are configured, external systems can push stock movement into RetailDaddy.
+Inventory data product catalog-ൽ നിന്ന് sync ചെയ്യാം. Stock updates വഴി adjustments ചെയ്യാം. Integrations configure ചെയ്താൽ external systems stock movement RetailDaddyയിലേക്ക് push ചെയ്യാം.
 
-### Can managers track low stock?
+### Managers low stock track ചെയ്യാമോ?
 
-Yes. The dashboard and inventory views can surface low stock and reorder signals so teams can prioritize restocking.
+അതെ. Dashboard-നും inventory views-നും low stock, reorder signals surface ചെയ്യാം. അതുകൊണ്ട് team restocking priority ചെയ്യാൻ കഴിയും.
 
-### Does it support reports?
+### Reports support ഉണ്ടോ?
 
-Yes. Reports are used for sales, margin, fast-moving products, and store-level performance review.
+ഉണ്ട്. Sales, margin, fast-moving products, store-level performance review എന്നിവയ്ക്കായി reports ഉപയോഗിക്കാം.
 
-### Who is this for?
+### ഇത് ആര്ക്ക് വേണ്ടി?
 
-Retail owners, store managers, operations teams, and small chains that need better day-to-day visibility.
+Retail owners, store managers, operations teams, day-to-day visibility വേണമെന്നുള്ള small retail chains എന്നിവർക്കാണ് ഇത് useful.

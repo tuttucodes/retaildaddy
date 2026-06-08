@@ -1,13 +1,13 @@
 {
   "title": "RetailDaddy SaaS Demo",
-  "language": "en-IN",
-  "opening": "Hello, I am the RetailDaddy AI demo assistant. I will walk you through the product and answer questions as we go.",
-  "closing": "That is the end of the core walkthrough. I can now answer questions about setup, pricing, integrations, workflows, or anything you want to inspect again.",
+  "language": "ml-IN",
+  "opening": "നമസ്കാരം. ഞാൻ RetailDaddyയുടെ AI ഡെമോ അസിസ്റ്റന്റാണ്. ഇപ്പോൾ ഉൽപ്പന്നത്തിന്റെ പ്രധാന ഭാഗങ്ങൾ കാണിച്ചുതരാം. ഇടയിൽ എന്തെങ്കിലും സംശയം ഉണ്ടെങ്കിൽ ഞാൻ മറുപടി പറയാം.",
+  "closing": "ഇതാണ് പ്രധാന വോക്ത്രൂയുടെ അവസാനം. ഇനി സെറ്റപ്പ്, വില, ഇന്റഗ്രേഷനുകൾ, വർക്‌ഫ്ലോകൾ, അല്ലെങ്കിൽ വീണ്ടും കാണേണ്ട ഏതെങ്കിലും ഫീച്ചർ എന്നിവയെക്കുറിച്ച് ചോദിക്കാം.",
   "steps": [
     {
       "id": "dashboard",
       "title": "Dashboard overview",
-      "say": "We will start on the dashboard. This gives a quick view of sales, inventory health, low stock alerts, and pending actions.",
+      "say": "ആദ്യം ഡാഷ്ബോർഡ് നോക്കാം. ഇവിടെ സെയിൽസ്, ഇൻവെന്ററി ഹെൽത്ത്, ലോ സ്റ്റോക്ക് അലർട്ടുകൾ, ചെയ്യേണ്ട പ്രധാന ആക്ഷനുകൾ എന്നിവ ഒറ്റ നോട്ടത്തിൽ കാണാം.",
       "action": {
         "type": "navigate",
         "url": "/"
@@ -19,7 +19,7 @@
     {
       "id": "inventory",
       "title": "Inventory tracking",
-      "say": "Next, I will show inventory tracking. This is where store teams can monitor SKU availability, reorder points, and stock movement.",
+      "say": "ഇനി ഇൻവെന്ററി ട്രാക്കിംഗ് കാണിക്കാം. ഇവിടെ സ്റ്റോർ ടീം ഓരോ SKUയുടെയും സ്റ്റോക്ക്, റീഓർഡർ പോയിന്റുകൾ, സ്റ്റോക്ക് മൂവ്മെന്റ് എന്നിവ നിരീക്ഷിക്കാം.",
       "action": {
         "type": "navigate",
         "url": "/inventory"
@@ -31,7 +31,7 @@
     {
       "id": "orders",
       "title": "Order management",
-      "say": "Here is order management. The flow is designed to reduce manual follow-up and make exceptions easy to spot.",
+      "say": "ഇതാണ് ഓർഡർ മാനേജ്മെന്റ് ഭാഗം. മാനുവൽ ഫോളോഅപ്പ് കുറയ്ക്കാനും പ്രശ്നമുള്ള ഓർഡറുകൾ വേഗത്തിൽ കണ്ടെത്താനും ഈ ഫ്ലോ സഹായിക്കും.",
       "action": {
         "type": "navigate",
         "url": "/orders"
@@ -43,7 +43,7 @@
     {
       "id": "reports",
       "title": "Reports",
-      "say": "Finally, reports help owners and operators compare store performance, identify fast-moving products, and catch margin leakage.",
+      "say": "അവസാനം റിപ്പോർട്ടുകൾ നോക്കാം. സ്റ്റോർ പെർഫോമൻസ് താരതമ്യം ചെയ്യാനും വേഗത്തിൽ വിറ്റുപോകുന്ന ഉൽപ്പന്നങ്ങൾ കണ്ടെത്താനും മാർജിൻ ലീക്കേജ് പിടികൂടാനും ഇത് സഹായിക്കും.",
       "action": {
         "type": "navigate",
         "url": "/reports"
