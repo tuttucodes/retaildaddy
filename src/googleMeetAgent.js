@@ -514,6 +514,7 @@ export class GoogleMeetAgent {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       await this.revealMeetControls();
+      await this.dismissMeetNotice();
 
       for (const blockedMarker of blockedMarkers) {
         if (await blockedMarker.isVisible({ timeout: 250 }).catch(() => false)) {
@@ -542,6 +543,34 @@ export class GoogleMeetAgent {
     if (!quiet) {
       this.logger.warn("Meet room confirmation was not detected. If the agent is waiting to be admitted, admit it in Meet.");
     }
+    return false;
+  }
+
+  async dismissMeetNotice() {
+    const notices = [
+      this.meetPage.getByRole("button", { name: /^got it$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^continue$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^dismiss$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^ok$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Got it$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Continue$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Dismiss$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^OK$/i }).first()
+    ];
+
+    for (const notice of notices) {
+      try {
+        if (await notice.isVisible({ timeout: 250 })) {
+          await notice.click({ timeout: 1000 });
+          this.logger.info("Dismissed Meet notice dialog.");
+          await this.meetPage.waitForTimeout(500);
+          return true;
+        }
+      } catch {
+        // Try next notice variant.
+      }
+    }
+
     return false;
   }
 
