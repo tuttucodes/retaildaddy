@@ -10,7 +10,7 @@
     "rehearse": "node src/index.js rehearse",
     "demo": "node src/index.js demo",
     "live-room": "node src/liveRoomServer.js",
-    "test": "node --test"
+    "test": "node --test test/*.js"
   },
   "dependencies": {
     "playwright": "^1.53.0"
