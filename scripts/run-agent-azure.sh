@@ -11,6 +11,7 @@ XVFB_RESOLUTION="${XVFB_RESOLUTION:-1440x960x24}"
 XVFB_LOG="${XVFB_LOG:-/tmp/retaildaddy-xvfb.log}"
 PULSE_LOG="${PULSE_LOG:-/tmp/retaildaddy-pulseaudio.log}"
 PULSE_MIC_SINK_NAME="${PULSE_MIC_SINK_NAME:-retaildaddy_agent_mic_sink}"
+PULSE_MIC_SOURCE_NAME="${PULSE_MIC_SOURCE_NAME:-retaildaddy_agent_virtual_mic}"
 PULSE_MEET_SINK_NAME="${PULSE_MEET_SINK_NAME:-retaildaddy_meet_speaker_sink}"
 
 log() {
@@ -161,6 +162,16 @@ start_pulseaudio() {
       "sink_properties=device.description=RetailDaddy_Agent_Mic" >/dev/null
   fi
 
+  if pactl list short sources | awk '{print $2}' | grep -Fxq "$PULSE_MIC_SOURCE_NAME"; then
+    log "PulseAudio virtual microphone source '$PULSE_MIC_SOURCE_NAME' already exists."
+  else
+    log "Creating PulseAudio virtual microphone source '$PULSE_MIC_SOURCE_NAME'."
+    pactl load-module module-remap-source \
+      "master=$PULSE_MIC_SINK_NAME.monitor" \
+      "source_name=$PULSE_MIC_SOURCE_NAME" \
+      "source_properties=device.description=RetailDaddy_Virtual_Microphone" >/dev/null
+  fi
+
   if pactl list short sinks | awk '{print $2}' | grep -Fxq "$PULSE_MEET_SINK_NAME"; then
     log "PulseAudio Meet speaker sink '$PULSE_MEET_SINK_NAME' already exists."
   else
@@ -171,13 +182,13 @@ start_pulseaudio() {
   fi
 
   pactl set-default-sink "$PULSE_MEET_SINK_NAME"
-  pactl set-default-source "$PULSE_MIC_SINK_NAME.monitor"
-  export PULSE_SOURCE="${PULSE_SOURCE:-$PULSE_MEET_SINK_NAME.monitor}"
+  pactl set-default-source "$PULSE_MIC_SOURCE_NAME"
+  export PULSE_SOURCE="$PULSE_MIC_SOURCE_NAME"
   export AUDIO_PLAY_COMMAND="${AUDIO_PLAY_COMMAND:-env PULSE_SINK=$PULSE_MIC_SINK_NAME ffplay -nodisp -autoexit -loglevel quiet}"
   export AUDIO_AUTO_LISTEN="${AUDIO_AUTO_LISTEN:-true}"
   export AUDIO_CAPTURE_COMMAND="${AUDIO_CAPTURE_COMMAND:-ffmpeg -hide_banner -nostdin -f pulse -i $PULSE_MEET_SINK_NAME.monitor -ac 1 -ar 16000 -f segment -segment_time 8 -reset_timestamps 1 \$AUDIO_INPUT_DIR/question-%04d.wav}"
   log "Chrome speaker sink: '$PULSE_MEET_SINK_NAME'."
-  log "Chrome microphone source: '$PULSE_MIC_SINK_NAME.monitor'."
+  log "Chrome microphone source: '$PULSE_MIC_SOURCE_NAME'."
   log "TTS playback command sends audio into '$PULSE_MIC_SINK_NAME'."
   log "STT capture command records from '$PULSE_MEET_SINK_NAME.monitor'."
 }
