@@ -3,6 +3,35 @@ import path from "node:path";
 
 const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".webm", ".m4a", ".aac", ".flac", ".ogg"]);
 
+export function wavRmsLevel(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  const dataMarker = Buffer.from("data");
+  const dataIndex = buffer.indexOf(dataMarker);
+  const start = dataIndex >= 0 ? dataIndex + 8 : 44;
+  if (buffer.length <= start + 2) return 0;
+
+  let sumSquares = 0;
+  let samples = 0;
+  for (let index = start; index + 1 < buffer.length; index += 2) {
+    const sample = buffer.readInt16LE(index) / 32768;
+    sumSquares += sample * sample;
+    samples += 1;
+  }
+
+  return samples > 0 ? Math.sqrt(sumSquares / samples) : 0;
+}
+
+export function shouldProcessAudioFile(filePath, { minBytes = 24000, minRms = 0.002 } = {}) {
+  const stat = fs.statSync(filePath);
+  if (stat.size < minBytes) return false;
+
+  if (path.extname(filePath).toLowerCase() === ".wav") {
+    return wavRmsLevel(filePath) >= minRms;
+  }
+
+  return true;
+}
+
 export function listAudioFiles(inputDir) {
   if (!fs.existsSync(inputDir)) {
     fs.mkdirSync(inputDir, { recursive: true });
@@ -66,6 +95,10 @@ export async function watchAudioInbox({ inputDir, onFile, logger, pollMs = 1500,
 
       pending.delete(file);
       seen.add(file);
+      if (!shouldProcessAudioFile(file)) {
+        logger.info(`Skipping silent audio file ${path.basename(file)}.`);
+        continue;
+      }
       try {
         await onFile(file);
       } catch (error) {
