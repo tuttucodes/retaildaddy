@@ -3,12 +3,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-function runCommand(command, args) {
+function runCommand(command, args, { signal } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: "inherit" });
-    child.on("error", reject);
+    const onAbort = () => { child.kill("SIGKILL"); };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+    child.on("error", (error) => { signal?.removeEventListener?.("abort", onAbort); reject(error); });
     child.on("exit", (code) => {
-      if (code === 0) resolve();
+      signal?.removeEventListener?.("abort", onAbort);
+      if (signal?.aborted) resolve();
+      else if (code === 0) resolve();
       else reject(new Error(`${command} exited with code ${code}`));
     });
   });
@@ -20,19 +27,17 @@ export function createAudioFilePath(audioOutDir, label = "speech", extension = "
   return path.join(audioOutDir, `${timestamp}-${label}.${extension}`);
 }
 
-export async function playAudio(filePath, playCommand = "") {
+export async function playAudio(filePath, playCommand = "", { signal } = {}) {
   if (playCommand) {
     const [command, ...args] = playCommand.split(/\s+/);
-    await runCommand(command, [...args, filePath]);
+    await runCommand(command, [...args, filePath], { signal });
     return;
   }
-
   if (os.platform() === "darwin") {
-    await runCommand("afplay", [filePath]);
+    await runCommand("afplay", [filePath], { signal });
     return;
   }
-
-  await runCommand("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", filePath]);
+  await runCommand("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", filePath], { signal });
 }
 
 export async function playAudioInBrowser(page, filePath) {
