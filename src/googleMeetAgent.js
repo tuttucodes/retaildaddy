@@ -264,22 +264,36 @@ export class GoogleMeetAgent {
     const candidates = [
       this.meetPage.getByRole("button", { name: /^ask to join$/i }).first(),
       this.meetPage.getByRole("button", { name: /^join now$/i }).first(),
+      this.meetPage.getByRole("button", { name: /^join$/i }).first(),
+      this.meetPage.getByRole("button", { name: /ask to join|join now|join/i }).first(),
       this.meetPage.locator("button").filter({ hasText: /^Ask to join$/i }).first(),
-      this.meetPage.locator("button").filter({ hasText: /^Join now$/i }).first()
+      this.meetPage.locator("button").filter({ hasText: /^Join now$/i }).first(),
+      this.meetPage.locator("button").filter({ hasText: /^Join$/i }).first()
     ];
 
     for (const button of candidates) {
       try {
-        const text = await button.textContent({ timeout: 1500 }).catch(() => "");
-        if (/companion/i.test(text || "")) continue;
+        const label = await button
+          .evaluate((element) =>
+            [
+              element.getAttribute("aria-label"),
+              element.getAttribute("data-tooltip"),
+              element.textContent
+            ]
+              .filter(Boolean)
+              .join(" ")
+          )
+          .catch(() => "");
+        if (/companion/i.test(label || "")) continue;
         await button.click({ timeout: 5000 });
-        this.logger.info("Clicked Meet join button.");
+        this.logger.info(`Clicked Meet join button${label ? `: ${label.trim()}` : "."}`);
         return await this.waitForMeetRoom();
       } catch {
         // Try next candidate.
       }
     }
 
+    await this.logMeetButtonLabels();
     this.logger.warn("Could not find a stable Meet join button. The browser remains open for manual join.");
     return false;
   }
