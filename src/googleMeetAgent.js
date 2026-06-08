@@ -95,7 +95,12 @@ export class GoogleMeetAgent {
     await this.enterMeetingCodeFromHomeIfNeeded();
     await this.dismissPrejoinToggles();
     await this.fillDisplayNameIfNeeded();
-    await this.clickJoinButton();
+    const joined = await this.clickJoinButton();
+    if (!joined) {
+      throw new Error(
+        "Meet join was not confirmed. The agent may need to be admitted by the host or signed in with an invited Google account."
+      );
+    }
 
     if (this.config.browser.autoPresent) {
       await this.tryStartPresenting();
@@ -243,14 +248,14 @@ export class GoogleMeetAgent {
       try {
         await button.click({ timeout: 5000 });
         this.logger.info("Clicked Meet join button.");
-        await this.waitForMeetRoom();
-        return;
+        return await this.waitForMeetRoom();
       } catch {
         // Try next candidate.
       }
     }
 
     this.logger.warn("Could not find a stable Meet join button. The browser remains open for manual join.");
+    return false;
   }
 
   async waitForMeetRoom() {
@@ -260,16 +265,33 @@ export class GoogleMeetAgent {
       this.meetPage.getByText(/you are in the meeting|meeting details/i).first()
     ];
 
-    for (const marker of markers) {
-      try {
-        await marker.waitFor({ timeout: 20000 });
-        return;
-      } catch {
-        // Try next in-call marker.
+    const blockedMarkers = [
+      this.meetPage.getByText(/you can['’]t join this video call/i).first(),
+      this.meetPage.getByText(/returning to home screen/i).first(),
+      this.meetPage.getByText(/no one can join a meeting unless invited or admitted by the host/i).first()
+    ];
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 60000) {
+      for (const blockedMarker of blockedMarkers) {
+        if (await blockedMarker.isVisible({ timeout: 250 }).catch(() => false)) {
+          throw new Error(
+            "Meet rejected the agent before it entered the room. Invite the signed-in bot account or admit the guest from the host account."
+          );
+        }
       }
+
+      for (const marker of markers) {
+        if (await marker.isVisible({ timeout: 250 }).catch(() => false)) {
+          return true;
+        }
+      }
+
+      await this.meetPage.waitForTimeout(1000);
     }
 
     this.logger.warn("Meet room confirmation was not detected. If the agent is waiting to be admitted, admit it in Meet.");
+    return false;
   }
 
   async tryStartPresenting() {
