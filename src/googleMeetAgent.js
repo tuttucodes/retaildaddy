@@ -336,7 +336,10 @@ export class GoogleMeetAgent {
 
     const buttons = [
       this.meetPage.getByRole("button", { name: /present now/i }).first(),
-      this.meetPage.getByRole("button", { name: /present/i }).first()
+      this.meetPage.getByRole("button", { name: /present/i }).first(),
+      this.meetPage.getByRole("button", { name: /share screen|share/i }).first(),
+      this.meetPage.locator("button[aria-label*='Present' i]").first(),
+      this.meetPage.locator("button[aria-label*='Share' i]").first()
     ];
 
     for (const button of buttons) {
@@ -357,8 +360,70 @@ export class GoogleMeetAgent {
       }
     }
 
+    const clickedFallback = await this.clickPresentControlFromDom();
+    if (clickedFallback) {
+      await this.choosePresentationSourceType();
+      if (this.productPage) {
+        await this.productPage.bringToFront();
+      }
+      this.logger.info("Attempted to start Meet presentation through DOM fallback.");
+      return true;
+    }
+
+    await this.logMeetButtonLabels();
     this.logger.warn("Auto-present did not find the Meet presentation controls.");
     return false;
+  }
+
+  async clickPresentControlFromDom() {
+    return await this.meetPage.evaluate(() => {
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      };
+
+      const buttons = Array.from(document.querySelectorAll("button,[role='button']"));
+      const candidate = buttons.find((button) => {
+        const label = [
+          button.getAttribute("aria-label"),
+          button.getAttribute("data-tooltip"),
+          button.getAttribute("jsname"),
+          button.textContent
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        return isVisible(button) && /present|share screen|share|screen/i.test(label);
+      });
+
+      if (!candidate) return false;
+      candidate.click();
+      return true;
+    });
+  }
+
+  async logMeetButtonLabels() {
+    const labels = await this.meetPage
+      .evaluate(() =>
+        Array.from(document.querySelectorAll("button,[role='button']"))
+          .map((button) => ({
+            text: (button.textContent || "").trim(),
+            aria: button.getAttribute("aria-label") || "",
+            tooltip: button.getAttribute("data-tooltip") || "",
+            title: button.getAttribute("title") || ""
+          }))
+          .filter((item) => item.text || item.aria || item.tooltip || item.title)
+          .slice(0, 80)
+      )
+      .catch(() => []);
+
+    this.logger.warn(`Visible Meet button labels: ${JSON.stringify(labels)}`);
   }
 
   async choosePresentationSourceType() {
